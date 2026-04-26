@@ -1,12 +1,14 @@
 """Shannon's Demon Dashboard — Streamlit entry point.
 
-Wires the Analysis tab and Documentation tab together. Most of the heavy
-lifting lives in `analysis/` and `components/`. This file is mostly layout.
+Wires the Analysis, Documentation, and Assumptions tabs together. Most of
+the heavy lifting lives in `analysis/` and `components/`. This file is
+mostly layout, theming, and section assembly.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import date as _date
 from typing import Optional
 
 import numpy as np
@@ -36,7 +38,7 @@ from analysis import (
     run_volatility,
     shannon_harvest,
 )
-from components import charts, docs, upload, controls
+from components import charts, controls, docs, upload
 
 # ---------------------------------------------------------------------------
 logging.basicConfig(level=cfg.LOG_LEVEL, format=cfg.LOG_FORMAT)
@@ -45,30 +47,307 @@ logger = logging.getLogger("shannon-demon")
 
 st.set_page_config(
     page_title="Shannon's Demon Dashboard",
-    page_icon="👹",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 
 # ---------------------------------------------------------------------------
+# Custom CSS — quant institutional dark aesthetic
+# ---------------------------------------------------------------------------
+_CUSTOM_CSS = f"""
+<style>
+:root {{
+  --bg: {cfg.THEME_BG};
+  --card: {cfg.THEME_CARD};
+  --card-alt: {cfg.THEME_CARD_ALT};
+  --border: {cfg.THEME_BORDER};
+  --text: {cfg.THEME_TEXT};
+  --muted: {cfg.THEME_TEXT_MUTED};
+  --accent: {cfg.THEME_ACCENT};
+  --success: {cfg.THEME_SUCCESS};
+  --warning: {cfg.THEME_WARNING};
+  --danger: {cfg.THEME_DANGER};
+  --info: {cfg.THEME_INFO};
+}}
+
+html, body, [class*="css"], .stApp {{
+  font-family: 'Inter', -apple-system, 'Segoe UI', sans-serif !important;
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+  font-feature-settings: 'tnum' 1, 'cv02' 1;
+}}
+
+/* main container width */
+.main .block-container {{
+  padding-top: 1.5rem;
+  padding-bottom: 4rem;
+  max-width: 1400px;
+}}
+
+/* H1 / titles */
+h1, .stApp h1 {{
+  color: var(--text) !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+  margin-bottom: 0.25rem !important;
+}}
+h2 {{ color: var(--text) !important; font-weight: 600 !important; }}
+h3, h4, h5 {{ color: var(--text) !important; }}
+
+/* tab headers — flatter, accent underline on active */
+.stTabs [data-baseweb="tab-list"] {{
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}}
+.stTabs [data-baseweb="tab"] {{
+  background-color: transparent !important;
+  color: var(--muted) !important;
+  border-radius: 0 !important;
+  padding: 8px 18px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 0.85em !important;
+}}
+.stTabs [aria-selected="true"] {{
+  color: var(--accent) !important;
+  border-bottom: 2px solid var(--accent) !important;
+  background-color: transparent !important;
+}}
+
+/* Section card — wraps each numbered block */
+.section-card {{
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 24px 28px;
+  margin: 0 0 28px 0;
+}}
+.section-anchor {{
+  display: block;
+  position: relative;
+  top: -70px;
+  visibility: hidden;
+}}
+.section-num {{
+  color: var(--accent);
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 0.85em;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  text-transform: uppercase;
+}}
+.section-title {{
+  font-size: 1.45em;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 0.15em;
+  margin-bottom: 0.25em;
+  letter-spacing: -0.01em;
+}}
+.section-desc {{
+  color: var(--muted);
+  font-size: 0.94em;
+  margin-bottom: 20px;
+  line-height: 1.5;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 14px;
+}}
+
+/* sub-headings inside a section */
+.subhead {{
+  font-size: 1.05em;
+  font-weight: 600;
+  color: var(--text);
+  margin: 14px 0 6px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}}
+.subhead-desc {{
+  color: var(--muted);
+  font-size: 0.85em;
+  margin-bottom: 10px;
+}}
+
+/* sleeve panel titles */
+.sleeve-title {{
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 1.05em;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+  border-left: 3px solid var(--accent);
+  padding-left: 10px;
+}}
+
+/* status pills */
+.pill {{
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 3px;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+}}
+.pill-pass {{ background: rgba(63,185,80,0.15); color: var(--success); border: 1px solid rgba(63,185,80,0.4); }}
+.pill-marginal {{ background: rgba(210,153,34,0.15); color: var(--warning); border: 1px solid rgba(210,153,34,0.4); }}
+.pill-fail {{ background: rgba(218,54,51,0.15); color: var(--danger); border: 1px solid rgba(218,54,51,0.4); }}
+.pill-error {{ background: rgba(139,148,158,0.15); color: var(--muted); border: 1px solid var(--border); }}
+
+/* metric tweaks */
+[data-testid="stMetric"] {{
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 10px 14px;
+}}
+[data-testid="stMetricLabel"] {{
+  color: var(--muted) !important;
+  font-size: 0.78em !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 500;
+}}
+[data-testid="stMetricValue"] {{
+  color: var(--text) !important;
+  font-family: 'JetBrains Mono', 'Consolas', monospace !important;
+  font-weight: 600 !important;
+  font-size: 1.4em !important;
+}}
+
+/* dataframes */
+[data-testid="stDataFrame"] {{
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}}
+
+/* sidebar TOC */
+[data-testid="stSidebar"] {{
+  background-color: var(--card) !important;
+  border-right: 1px solid var(--border);
+}}
+[data-testid="stSidebar"] > div:first-child {{
+  padding-top: 1rem;
+}}
+.toc-title {{
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 0.78em;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  font-weight: 600;
+  padding: 4px 14px 14px 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+}}
+.toc-link {{
+  display: block;
+  padding: 7px 14px;
+  color: var(--muted);
+  text-decoration: none !important;
+  font-size: 0.92em;
+  border-left: 2px solid transparent;
+  transition: all 0.12s ease;
+}}
+.toc-link:hover {{
+  color: var(--accent);
+  background: var(--card-alt);
+  border-left-color: var(--accent);
+}}
+.toc-spacer {{ height: 18px; }}
+
+/* expanders */
+.streamlit-expanderHeader {{
+  background-color: var(--card-alt) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text) !important;
+  border-radius: 4px !important;
+}}
+
+/* buttons — primary uses accent */
+.stButton > button {{
+  border: 1px solid var(--border);
+  background: var(--card-alt);
+  color: var(--text);
+  font-weight: 500;
+  border-radius: 4px;
+  transition: all 0.12s ease;
+}}
+.stButton > button:hover {{
+  border-color: var(--accent);
+  color: var(--accent);
+}}
+.stButton > button[kind="primary"] {{
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+}}
+.stButton > button[kind="primary"]:hover {{
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}}
+
+/* alert boxes */
+.stAlert {{ border-radius: 4px; }}
+
+/* verdict box */
+.verdict-box {{
+  border-radius: 6px;
+  padding: 18px 22px;
+  margin-bottom: 18px;
+}}
+.verdict-box h3 {{
+  margin-top: 0;
+  font-family: 'JetBrains Mono', 'Consolas', monospace;
+  font-size: 1.15em;
+  letter-spacing: 0.06em;
+}}
+
+/* interpretation box (after metrics table) */
+.interp-box {{
+  background: var(--card-alt);
+  border-left: 3px solid var(--info);
+  padding: 14px 18px;
+  margin: 12px 0 0 0;
+  border-radius: 0 4px 4px 0;
+  color: var(--text);
+  font-size: 0.95em;
+  line-height: 1.55;
+}}
+.interp-box strong {{ color: var(--accent); }}
+
+/* hide Streamlit hamburger and "Made with Streamlit" footer */
+#MainMenu {{ visibility: hidden; }}
+footer {{ visibility: hidden; }}
+
+/* scrollbar */
+::-webkit-scrollbar {{ width: 8px; height: 8px; }}
+::-webkit-scrollbar-track {{ background: var(--bg); }}
+::-webkit-scrollbar-thumb {{ background: var(--border); border-radius: 4px; }}
+::-webkit-scrollbar-thumb:hover {{ background: var(--muted); }}
+</style>
+"""
+
+
+# ---------------------------------------------------------------------------
 # Cached compute
 # ---------------------------------------------------------------------------
 def _hash_series(s: pd.Series) -> str:
-    """Fast stable hash for caching keyed on a price series."""
     arr = s.to_numpy()
+    if len(arr) == 0:
+        return "empty"
     return f"{len(arr)}_{float(arr[0]):.6f}_{float(arr[-1]):.6f}_{float(arr.mean()):.6f}"
 
 
 @st.cache_data(show_spinner=False)
-def _compute_stat_tests(
-    series_hash: str,
-    close_values: tuple[float, ...],
-    close_index: tuple,
-    interval_seconds: float,
-    annualisation: str,
-):
-    """Run the full statistical suite. Cached on series-hash + settings."""
+def _compute_stat_tests(series_hash, close_values, close_index, interval_seconds, annualisation):
     close = pd.Series(close_values, index=pd.Index(close_index))
     interval = pd.Timedelta(seconds=interval_seconds)
     return {
@@ -83,61 +362,33 @@ def _compute_stat_tests(
 
 @st.cache_data(show_spinner=False)
 def _cached_demon_backtest(
-    series_hash: str,
-    close_values: tuple[float, ...],
-    close_index: tuple,
-    weight: float,
-    rebalance_rule: str,
-    time_period: int,
-    threshold_pct: float,
-    band_sigma: float,
-    band_window: int,
-    cash_yield_pct: float,
-    transaction_cost_bps: float,
-    interval_seconds: float,
-    annualisation: str,
+    series_hash, close_values, close_index,
+    weight, rebalance_rule, time_period, threshold_pct, band_sigma, band_window,
+    cash_yield_pct, transaction_cost_bps, interval_seconds, annualisation,
 ) -> BacktestResult:
     close = pd.Series(close_values, index=pd.Index(close_index))
     return run_demon_backtest(
-        close,
-        weight=weight,
-        rebalance_rule=rebalance_rule,
-        time_period=time_period,
-        threshold_pct=threshold_pct,
-        band_sigma=band_sigma,
-        band_window=band_window,
+        close, weight=weight, rebalance_rule=rebalance_rule,
+        time_period=time_period, threshold_pct=threshold_pct,
+        band_sigma=band_sigma, band_window=band_window,
         cash_yield_annual_pct=cash_yield_pct,
         transaction_cost_bps=transaction_cost_bps,
-        interval_seconds=interval_seconds,
-        annualisation=annualisation,
+        interval_seconds=interval_seconds, annualisation=annualisation,
     )
 
 
 @st.cache_data(show_spinner=False)
 def _cached_dual_sleeve(
-    backtest_id: str,                        # cache key
-    sleeve_a_eq_values: tuple[float, ...],
-    sleeve_a_alloc_pct: float,
-    sleeve_b_alloc_pct: float,
-    sleeve_b_expected_return_pct: float,
-    sleeve_b_expected_vol_pct: float,
-    sleeve_b_expected_max_dd_pct: float,
-    sleeve_b_win_rate_pct: float,
-    sleeve_b_avg_leverage: float,
-    sleeve_b_funding_cost_pct: float,
-    sleeve_b_stop_loss_pct: float,
-    correlation: float,
-    n_simulations: int,
-    random_seed: int,
-    horizon_periods: int,
-    periods_per_year: float,
-    student_t_df: int,
-    risk_free_rate_pct: float,
-    mar_pct: float,
-    confidence_low_pct: int,
-    confidence_high_pct: int,
+    backtest_id, sleeve_a_eq_values,
+    sleeve_a_alloc_pct, sleeve_b_alloc_pct,
+    sleeve_b_expected_return_pct, sleeve_b_expected_vol_pct,
+    sleeve_b_expected_max_dd_pct, sleeve_b_win_rate_pct,
+    sleeve_b_avg_leverage, sleeve_b_funding_cost_pct,
+    sleeve_b_stop_loss_pct, correlation,
+    n_simulations, random_seed, horizon_periods, periods_per_year,
+    student_t_df, risk_free_rate_pct, mar_pct,
+    confidence_low_pct, confidence_high_pct,
 ) -> PortfolioResult:
-    # Reconstruct a minimal BacktestResult-like object for the simulator
     eq = pd.Series(sleeve_a_eq_values)
     fake_bt = BacktestResult(
         equity_curve=eq, risky_value=eq, cash_value=eq,
@@ -157,151 +408,298 @@ def _cached_dual_sleeve(
         sleeve_b_funding_cost_pct=sleeve_b_funding_cost_pct,
         sleeve_b_stop_loss_pct=sleeve_b_stop_loss_pct,
         correlation=correlation,
-        n_simulations=n_simulations,
-        random_seed=random_seed,
-        horizon_periods=horizon_periods,
-        periods_per_year=periods_per_year,
+        n_simulations=n_simulations, random_seed=random_seed,
+        horizon_periods=horizon_periods, periods_per_year=periods_per_year,
         student_t_df=student_t_df,
-        risk_free_rate_pct=risk_free_rate_pct,
-        mar_pct=mar_pct,
+        risk_free_rate_pct=risk_free_rate_pct, mar_pct=mar_pct,
         confidence_low_pct=confidence_low_pct,
         confidence_high_pct=confidence_high_pct,
     )
 
 
 # ---------------------------------------------------------------------------
-def _badge_html(status: str) -> str:
-    color = {"pass": "#27ae60", "marginal": "#f39c12", "fail": "#c0392b", "error": "#7f8c8d"}.get(status, "#7f8c8d")
-    label = {"pass": "PASS", "marginal": "MARGINAL", "fail": "FAIL", "error": "ERROR"}.get(status, "?")
-    return f'<span style="background:{color};color:white;padding:2px 8px;border-radius:4px;font-size:0.85em;font-weight:600;">{label}</span>'
+# Section / status helpers
+# ---------------------------------------------------------------------------
+def _pill(status: str) -> str:
+    cls = {"pass": "pill-pass", "marginal": "pill-marginal",
+           "fail": "pill-fail", "error": "pill-error"}.get(status, "pill-error")
+    label = {"pass": "PASS", "marginal": "MARGINAL",
+             "fail": "FAIL", "error": "ERROR"}.get(status, "?")
+    return f'<span class="pill {cls}">{label}</span>'
+
+
+def _section_open(anchor: str, num: str, title: str, desc: str) -> None:
+    """Render section header (title + 1-line description) inside a card."""
+    st.markdown(f'<a class="section-anchor" id="{anchor}"></a>', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="section-num">{num}</div>'
+        f'<div class="section-title">{title}</div>'
+        f'<div class="section-desc">{desc}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _subhead(label: str, status: Optional[str] = None, desc: Optional[str] = None) -> None:
+    pill = _pill(status) if status else ""
+    st.markdown(f'<div class="subhead">{label} {pill}</div>', unsafe_allow_html=True)
+    if desc:
+        st.markdown(f'<div class="subhead-desc">{desc}</div>', unsafe_allow_html=True)
 
 
 def _verdict_box(v: SuitabilityVerdict) -> None:
-    color = {"green": "#27ae60", "amber": "#f39c12", "red": "#c0392b"}[v.color]
-    bg = {"green": "rgba(46,204,113,0.10)", "amber": "rgba(243,156,18,0.10)", "red": "rgba(192,57,43,0.10)"}[v.color]
+    color = {"green": cfg.THEME_SUCCESS,
+             "amber": cfg.THEME_WARNING,
+             "red": cfg.THEME_DANGER}[v.color]
+    bg = {"green": "rgba(63,185,80,0.10)",
+          "amber": "rgba(210,153,34,0.10)",
+          "red": "rgba(218,54,51,0.10)"}[v.color]
     st.markdown(
-        f"""
-<div style="border:2px solid {color};background:{bg};padding:16px;border-radius:8px;">
-  <h3 style="margin-top:0;color:{color};">Score: {v.score}/100 — {v.verdict.upper()}</h3>
-  <p style="font-size:1.05em;">{v.headline}</p>
-</div>
-""",
+        f"""<div class="verdict-box" style="border:1px solid {color};background:{bg};">
+          <h3 style="color:{color};">SCORE {v.score}/100 — {v.verdict.upper()}</h3>
+          <p style="font-size:1.02em;margin:0;color:{cfg.THEME_TEXT};">{v.headline}</p>
+        </div>""",
         unsafe_allow_html=True,
     )
 
 
 # ---------------------------------------------------------------------------
-def _section_price_overview(close: pd.Series) -> None:
-    st.header("1. Price Overview")
-    st.plotly_chart(charts.price_overview(close), use_container_width=True)
+# Date range selector
+# ---------------------------------------------------------------------------
+def _render_date_filter(close: pd.Series, has_time_index: bool) -> Optional[pd.Series]:
+    """Render a date / row range selector; return the filtered close series."""
+    st.markdown(
+        '<div class="section-num">FILTER</div>'
+        '<div class="section-title">Analysis date range</div>'
+        '<div class="section-desc">Restrict every test, backtest, and Monte Carlo below to a date window. '
+        'Defaults to the full uploaded range.</div>',
+        unsafe_allow_html=True,
+    )
 
-    with st.expander("Summary statistics"):
-        desc = close.describe()
-        cols = st.columns(4)
-        cols[0].metric("Mean", f"{desc['mean']:.6f}")
-        cols[1].metric("Std", f"{desc['std']:.6f}")
-        cols[2].metric("Min", f"{desc['min']:.6f}")
-        cols[3].metric("Max", f"{desc['max']:.6f}")
-        cols2 = st.columns(4)
-        cols2[0].metric("First", f"{close.iloc[0]:.6f}")
-        cols2[1].metric("Last", f"{close.iloc[-1]:.6f}")
-        cols2[2].metric("% range", f"{(desc['max']/desc['min'] - 1)*100:.2f}%")
-        cols2[3].metric("Rows", f"{len(close):,}")
+    if has_time_index and isinstance(close.index, pd.DatetimeIndex):
+        min_d: _date = close.index[0].to_pydatetime().date()
+        max_d: _date = close.index[-1].to_pydatetime().date()
+
+        c1, c2, c3 = st.columns([1, 1, 2])
+        with c1:
+            start = st.date_input("Start date", value=min_d,
+                                  min_value=min_d, max_value=max_d, key="date_start")
+        with c2:
+            end = st.date_input("End date", value=max_d,
+                                min_value=min_d, max_value=max_d, key="date_end")
+        with c3:
+            st.metric("Selected window",
+                      f"{(pd.Timestamp(end) - pd.Timestamp(start)).days} days",
+                      help="Length of the window currently selected.")
+
+        if start > end:
+            st.error("Start date must be on or before end date.")
+            return None
+
+        mask = (close.index.date >= start) & (close.index.date <= end)
+        out = close[mask]
+        if len(out) < cfg.MIN_OBS_HARD_BLOCK:
+            st.error(f"Filtered window has only {len(out)} rows — minimum "
+                     f"{cfg.MIN_OBS_HARD_BLOCK} required. Widen the range.")
+            return None
+        if len(out) < cfg.MIN_OBS_SOFT_WARN:
+            st.warning(f"Filtered window has {len(out)} rows. Statistical tests need "
+                       f">= {cfg.MIN_OBS_SOFT_WARN} for reliable estimates.")
+        st.caption(f"Filtered: **{len(out):,}** observations between {start} and {end}.")
+        return out
+    else:
+        n = len(close)
+        c1, c2, c3 = st.columns([1, 1, 2])
+        with c1:
+            start_idx = st.number_input("Start row", 0, max(0, n - 2),
+                                        0, 1, key="row_start")
+        with c2:
+            end_idx = st.number_input("End row", 1, n - 1, n - 1, 1, key="row_end")
+        with c3:
+            st.metric("Selected rows", f"{end_idx - start_idx + 1:,}")
+        if start_idx >= end_idx:
+            st.error("Start row must be before end row.")
+            return None
+        return close.iloc[int(start_idx): int(end_idx) + 1]
+
+
+# ---------------------------------------------------------------------------
+# Sections
+# ---------------------------------------------------------------------------
+def _section_price_overview(close: pd.Series) -> None:
+    with st.container(border=True):
+        _section_open(
+            "section-1", "01 / SECTION",
+            "Price Overview",
+            "Visual snapshot of the uploaded series — close price with a rolling mean and "
+            "+/-1 sigma / +/-2 sigma bands. Use this to eyeball whether the asset behaves "
+            "in a way that rebalancing could exploit.",
+        )
+        st.plotly_chart(charts.price_overview(close), use_container_width=True)
+
+        with st.expander("Summary statistics"):
+            desc = close.describe()
+            cols = st.columns(4)
+            cols[0].metric("Mean", f"{desc['mean']:.6f}")
+            cols[1].metric("Std", f"{desc['std']:.6f}")
+            cols[2].metric("Min", f"{desc['min']:.6f}")
+            cols[3].metric("Max", f"{desc['max']:.6f}")
+            cols2 = st.columns(4)
+            cols2[0].metric("First", f"{close.iloc[0]:.6f}")
+            cols2[1].metric("Last", f"{close.iloc[-1]:.6f}")
+            cols2[2].metric("Range", f"{(desc['max']/desc['min'] - 1)*100:.2f}%")
+            cols2[3].metric("Rows", f"{len(close):,}")
 
 
 def _section_stationarity(results: dict) -> None:
-    st.header("2. Stationarity & Mean Reversion")
-    adf, kpss_r, hurst, hl = results["adf"], results["kpss"], results["hurst"], results["half_life"]
+    with st.container(border=True):
+        _section_open(
+            "section-2", "02 / SECTION",
+            "Stationarity & Mean Reversion",
+            "Tests whether the series tends to return to its average. ADF and KPSS check this from "
+            "different angles; Hurst measures persistence; half-life estimates how fast the series snaps back.",
+        )
+        adf, kpss_r, hurst, hl = results["adf"], results["kpss"], results["hurst"], results["half_life"]
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(f"##### ADF Test {_badge_html(adf.status)}", unsafe_allow_html=True)
-        if adf.status != "error":
-            st.metric("Statistic (c)", f"{adf.statistic_c:.4f}")
-            st.metric("p-value (c)", f"{adf.pvalue_c:.4f}")
-            st.metric("Used lag", f"{adf.used_lag_c}")
-            with st.expander("Detail (constant + trend spec)"):
-                st.write(f"Statistic: {adf.statistic_ct:.4f}")
-                st.write(f"p-value: {adf.pvalue_ct:.4f}")
-                st.write(f"Critical values (c): {adf.critical_values_c}")
-                st.write(f"Critical values (ct): {adf.critical_values_ct}")
-        st.info(interpret_adf(adf))
+        c1, c2 = st.columns(2)
+        with c1:
+            _subhead("ADF Test", adf.status,
+                     "Tests if the series is stationary. Low p-value = mean-reverting.")
+            if adf.status != "error":
+                st.metric("Statistic (c)", f"{adf.statistic_c:.4f}",
+                          help="Augmented Dickey-Fuller test statistic. More negative = stronger mean reversion.")
+                st.metric("p-value (c)", f"{adf.pvalue_c:.4f}",
+                          help="< 0.05 = reject the null of a unit root => stationary.")
+                st.metric("Used lag", f"{adf.used_lag_c}",
+                          help="Lag selected by AIC.")
+                with st.expander("Detail (constant + trend spec)"):
+                    st.write(f"Statistic: {adf.statistic_ct:.4f}")
+                    st.write(f"p-value: {adf.pvalue_ct:.4f}")
+                    st.write(f"Critical values (c): {adf.critical_values_c}")
+                    st.write(f"Critical values (ct): {adf.critical_values_ct}")
+            st.info(interpret_adf(adf))
 
-    with c2:
-        st.markdown(f"##### KPSS Test {_badge_html(kpss_r.status)}", unsafe_allow_html=True)
-        if kpss_r.status != "error":
-            st.metric("Statistic", f"{kpss_r.statistic:.4f}")
-            st.metric("p-value", f"{kpss_r.pvalue:.4f}")
-            st.metric("Lag", f"{kpss_r.used_lag}")
-            with st.expander("Critical values"):
-                st.write(kpss_r.critical_values)
-        st.info(interpret_kpss(kpss_r))
+        with c2:
+            _subhead("KPSS Test", kpss_r.status,
+                     "Tests the opposite null. High p-value = stationary around a level.")
+            if kpss_r.status != "error":
+                st.metric("Statistic", f"{kpss_r.statistic:.4f}",
+                          help="KPSS statistic. Low values support stationarity.")
+                st.metric("p-value", f"{kpss_r.pvalue:.4f}",
+                          help="> 0.05 = fail to reject stationarity (good for our use).")
+                st.metric("Lag", f"{kpss_r.used_lag}")
+                with st.expander("Critical values"):
+                    st.write(kpss_r.critical_values)
+            st.info(interpret_kpss(kpss_r))
 
-    c3, c4 = st.columns(2)
-    with c3:
-        st.markdown(f"##### Hurst Exponent {_badge_html(hurst.status)}", unsafe_allow_html=True)
-        if hurst.status != "error":
-            st.metric("Best estimate", f"{hurst.best_estimate:.3f}")
-            cc = st.columns(2)
-            cc[0].metric("R/S", f"{hurst.rs_hurst:.3f}")
-            cc[1].metric("Variance", f"{hurst.var_hurst:.3f}")
-            st.plotly_chart(charts.hurst_gauge(hurst), use_container_width=True)
-        st.info(interpret_hurst(hurst))
+        c3, c4 = st.columns(2)
+        with c3:
+            _subhead("Hurst Exponent", hurst.status,
+                     "Memory of the series. <0.5 reverts; ~0.5 random walk; >0.5 trends.")
+            if hurst.status != "error":
+                st.metric("Best estimate", f"{hurst.best_estimate:.3f}",
+                          help="Mean of the two methods, or the more reliable one if they disagree.")
+                cc = st.columns(2)
+                cc[0].metric("R/S", f"{hurst.rs_hurst:.3f}",
+                             help="Rescaled-range method.")
+                cc[1].metric("Variance", f"{hurst.var_hurst:.3f}",
+                             help="Variance-of-lagged-differences method.")
+                st.plotly_chart(charts.hurst_gauge(hurst), use_container_width=True)
+            st.info(interpret_hurst(hurst))
 
-    with c4:
-        st.markdown(f"##### Half-Life of Mean Reversion {_badge_html(hl.status)}", unsafe_allow_html=True)
-        if hl.status != "error":
-            st.metric("β (AR1)", f"{hl.beta:.5f}")
-            st.metric("β p-value", f"{hl.beta_pvalue:.4f}")
-            if np.isfinite(hl.half_life_periods):
-                st.metric("Half-life (periods)", f"{hl.half_life_periods:.1f}")
-                st.metric("Half-life (human)", hl.half_life_human)
-        st.info(interpret_half_life(hl))
+        with c4:
+            _subhead("Half-Life of Mean Reversion", hl.status,
+                     "How long it takes the series to snap halfway back to its mean.")
+            if hl.status != "error":
+                st.metric("Beta (AR1)", f"{hl.beta:.5f}",
+                          help="AR(1) coefficient. Negative = mean-reverting; closer to -1 = faster.")
+                st.metric("Beta p-value", f"{hl.beta_pvalue:.4f}",
+                          help="< 0.05 = the mean reversion is statistically real.")
+                if np.isfinite(hl.half_life_periods):
+                    st.metric("Half-life (periods)", f"{hl.half_life_periods:.1f}")
+                    st.metric("Half-life (human)", hl.half_life_human)
+            st.info(interpret_half_life(hl))
 
-    # Combined banner
-    banner_text, banner_color = combined_stationarity_verdict(adf, kpss_r)
-    color_map = {"green": "success", "amber": "warning", "red": "error"}
-    getattr(st, color_map[banner_color])(f"**Combined ADF + KPSS verdict:** {banner_text}")
+        banner_text, banner_color = combined_stationarity_verdict(adf, kpss_r)
+        color_map = {"green": "success", "amber": "warning", "red": "error"}
+        getattr(st, color_map[banner_color])(f"**Combined ADF + KPSS verdict:** {banner_text}")
 
 
 def _section_regime_vol(close: pd.Series, results: dict) -> None:
-    st.header("3. Regime Stability & Volatility")
-    regime, vol = results["regime"], results["vol"]
+    with st.container(border=True):
+        _section_open(
+            "section-3", "03 / SECTION",
+            "Regime Stability & Volatility",
+            "Detects regime shifts (sudden changes in level) and measures the asset's annualised "
+            "volatility — the raw material the demon harvests.",
+        )
+        regime, vol = results["regime"], results["vol"]
 
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(f"##### Regime Stability {_badge_html(regime.status)}", unsafe_allow_html=True)
-        if regime.status != "error":
-            st.metric("Regime shifts detected", f"{regime.n_shifts}")
-            st.caption(f"Method: {regime.method}")
-            st.plotly_chart(charts.regime_chart(close, regime), use_container_width=True)
-        st.info(interpret_regime(regime))
+        c1, c2 = st.columns(2)
+        with c1:
+            _subhead("Regime Stability", regime.status,
+                     "Counts moments where the series clearly shifts level.")
+            if regime.status != "error":
+                st.metric("Regime shifts detected", f"{regime.n_shifts}",
+                          help="Times the rolling mean moved > 2 sigma vs the prior window.")
+                st.caption(f"Method: {regime.method}")
+                st.plotly_chart(charts.regime_chart(close, regime), use_container_width=True)
+            st.info(interpret_regime(regime))
 
-    with c2:
-        st.markdown(f"##### Annualised Volatility {_badge_html(vol.status)}", unsafe_allow_html=True)
-        if vol.status != "error":
-            st.metric("Full-sample (ann.)", f"{vol.full_sample_annualised*100:.2f}%")
-            st.metric("Last 30 periods", f"{vol.realised_30p_annualised*100:.2f}%")
-            st.caption(f"Periods/year used: {vol.periods_per_year:.0f}")
-            st.plotly_chart(charts.volatility_chart(vol), use_container_width=True)
-        st.info(interpret_volatility(vol))
+        with c2:
+            _subhead("Annualised Volatility", vol.status,
+                     "Annualised stdev of log returns. The bigger this is, the more rebalancing fuel.")
+            if vol.status != "error":
+                st.metric("Full-sample (ann.)", f"{vol.full_sample_annualised*100:.2f}%",
+                          help="Annualised stdev across the whole window.")
+                st.metric("Last 30 periods", f"{vol.realised_30p_annualised*100:.2f}%",
+                          help="Recent realised volatility — does it match the long run?")
+                st.caption(f"Periods/year used: {vol.periods_per_year:.0f}")
+                st.plotly_chart(charts.volatility_chart(vol), use_container_width=True)
+            st.info(interpret_volatility(vol))
 
 
 def _section_harvest(vol_result, default_w: float) -> None:
-    st.header("4. Shannon Harvest Estimator")
-    st.latex(r"\text{Bonus} \approx \tfrac{1}{2} \cdot w \cdot (1-w) \cdot \sigma^2")
-    sigma = vol_result.full_sample_annualised if np.isfinite(vol_result.full_sample_annualised) else 0.0
-    w = st.slider("Weight in risky asset (w)", 0.05, 0.95, default_w, 0.05, key="harvest_w")
-    h = shannon_harvest(w, sigma)
-    cols = st.columns(3)
-    cols[0].metric("Annualised σ", f"{sigma*100:.2f}%")
-    cols[1].metric("σ²", f"{h.annual_variance:.4f}")
-    cols[2].metric("Bonus at w", f"{h.bonus_pct:.3f}%/yr")
-    st.plotly_chart(charts.harvest_curve(h), use_container_width=True)
-    st.caption(
-        "Continuous-time approximation under GBM. Realised harvest depends on return autocorrelation, "
-        "transaction costs, rebalance frequency, and survivorship."
-    )
+    with st.container(border=True):
+        _section_open(
+            "section-4", "04 / SECTION",
+            "Shannon Harvest Estimator",
+            "Theoretical upper bound on the annualised rebalancing bonus, given the measured volatility "
+            "and your weight in the risky asset. Continuous-time GBM approximation.",
+        )
+        st.latex(r"\text{Bonus} \approx \tfrac{1}{2} \cdot w \cdot (1-w) \cdot \sigma^2")
+        sigma = vol_result.full_sample_annualised if np.isfinite(vol_result.full_sample_annualised) else 0.0
+        w = st.slider("Weight in risky asset (w)", 0.05, 0.95, default_w, 0.05, key="harvest_w")
+        h = shannon_harvest(w, sigma)
+        cols = st.columns(3)
+        cols[0].metric("Annualised sigma", f"{sigma*100:.2f}%",
+                       help="Volatility input to the harvest formula.")
+        cols[1].metric("sigma squared", f"{h.annual_variance:.4f}",
+                       help="Variance — the fuel for rebalancing.")
+        cols[2].metric("Bonus at w", f"{h.bonus_pct:.3f}%/yr",
+                       help="Annualised expected harvest given your weight.")
+        st.plotly_chart(charts.harvest_curve(h), use_container_width=True)
+        st.caption(
+            "Continuous-time approximation under GBM. Realised harvest depends on return autocorrelation, "
+            "transaction costs, rebalance frequency, and survivorship."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Metrics: explanations + interpretation
+# ---------------------------------------------------------------------------
+_METRIC_HELP: dict[str, str] = {
+    "Sleeve": "Which book the metrics row describes.",
+    "CAGR": "Compound Annual Growth Rate — geometric average return per year. The single 'how much did I make?' number.",
+    "Vol (ann.)": "Annualised standard deviation of returns. Higher = more daily wiggle. Bigger isn't bad if it's symmetric.",
+    "Sharpe": "Excess return per unit of total volatility. >1 decent, >2 great. Penalises both upside and downside vol equally.",
+    "Sortino": "Like Sharpe but only counts downside volatility. The fairer measure for skewed strategies. >2 is the threshold for safely supporting leverage.",
+    "Calmar": "CAGR divided by max drawdown. A pure pain-vs-gain metric. >1 = you make more per year than the worst loss you suffered.",
+    "Max DD (mean)": "Average peak-to-trough loss across all simulated paths. Your typical worst day.",
+    "Worst DD (p5)": "5th-percentile drawdown — the worst loss seen in the bad 5% of simulations. Plan for this happening.",
+    "Best terminal (p95)": "Top 5% terminal value as a multiple of starting capital. The 'lottery' upside.",
+    "P(loss)": "Probability the portfolio ends below the starting value across simulations.",
+    "P(DD>50%)": "Probability of suffering at least a 50% drawdown at some point during the run. Anything > 5% is concerning.",
+}
 
 
 def _metrics_row(label: str, m) -> dict:
@@ -314,113 +712,212 @@ def _metrics_row(label: str, m) -> dict:
         "Calmar": f"{m.calmar:.2f}",
         "Max DD (mean)": f"{m.max_drawdown*100:.2f}%",
         "Worst DD (p5)": f"{m.worst_case_dd_p5*100:.2f}%",
-        "Best terminal (p95)": f"{m.best_case_terminal_p95:.2f}×",
+        "Best terminal (p95)": f"{m.best_case_terminal_p95:.2f}x",
         "P(loss)": f"{m.prob_loss*100:.1f}%",
         "P(DD>50%)": f"{m.prob_dd_over_50pct*100:.1f}%",
     }
 
 
-def _section_dual_sleeve(close: pd.Series, results: dict, sb: controls.SidebarSettings,
-                         interval_seconds: float) -> tuple[BacktestResult, PortfolioResult, controls.SleeveAControls, controls.SleeveBControls]:
-    st.header("5. Dual-Sleeve Portfolio Backtest")
+def _interpret_metrics(portfolio: PortfolioResult) -> str:
+    """Generate a 3-4 sentence plain-English read-out of the combined metrics."""
+    m = portfolio.metrics_combined
+    a, b = portfolio.metrics_a, portfolio.metrics_b
+    pieces: list[str] = []
 
-    hl = results["half_life"]
-    if np.isfinite(hl.half_life_periods) and hl.half_life_periods > 0:
-        default_period = max(1, int(round(0.75 * hl.half_life_periods)))
-    else:
-        default_period = cfg.SLEEVE_A_DEFAULTS.time_rebalance_periods
-
-    left, right = st.columns([1, 1])
-    with left:
-        a_ctrl = controls.render_sleeve_a(default_period)
-        st.divider()
-        b_ctrl = controls.render_sleeve_b(a_ctrl.capital_alloc_pct)
-
-    series_hash = _hash_series(close)
-    bt = _cached_demon_backtest(
-        series_hash=series_hash,
-        close_values=tuple(close.to_numpy().tolist()),
-        close_index=tuple(close.index),
-        weight=a_ctrl.weight,
-        rebalance_rule=a_ctrl.rebalance_rule,
-        time_period=a_ctrl.time_period,
-        threshold_pct=a_ctrl.threshold_pct,
-        band_sigma=a_ctrl.band_sigma,
-        band_window=a_ctrl.band_window,
-        cash_yield_pct=a_ctrl.cash_yield_pct,
-        transaction_cost_bps=a_ctrl.transaction_cost_bps,
-        interval_seconds=interval_seconds,
-        annualisation=sb.annualisation,
+    # 1. Headline return / risk
+    pieces.append(
+        f"The combined portfolio compounds at <strong>{m.cagr*100:.2f}%/yr</strong> "
+        f"with an annualised volatility of <strong>{m.annualised_vol*100:.2f}%</strong>."
     )
 
-    # Periods/year for the MC engine
-    if sb.annualisation == "calendar":
-        ppy = (365.25 * 24 * 3600) / max(interval_seconds, 1.0)
+    # 2. Sortino quality
+    if m.sortino >= 2.0:
+        sortino_q = "very strong (>= 2.0) — solid enough to support meaningful leverage"
+    elif m.sortino >= 1.0:
+        sortino_q = "decent (1.0-2.0) — usable but be cautious adding leverage"
+    elif m.sortino >= 0:
+        sortino_q = "weak (<1.0) — leverage will amplify drawdowns faster than returns"
     else:
-        ppy = (cfg.DEFAULT_TRADING_HOURS_PER_YEAR * 3600) / max(interval_seconds, 1.0)
+        sortino_q = "negative — the strategy loses money on a risk-adjusted basis"
+    pieces.append(
+        f"The Sortino of <strong>{m.sortino:.2f}</strong> is {sortino_q}."
+    )
 
-    # Horizon = same length as the backtest history
-    horizon = max(50, len(close))
+    # 3. Drawdown read-through
+    if m.prob_dd_over_50pct > 0.10:
+        dd_q = (f"More than 10% of simulations breach a 50% drawdown "
+                f"(P(DD>50%) = {m.prob_dd_over_50pct*100:.1f}%) — this is fragile.")
+    elif m.prob_dd_over_50pct > 0.02:
+        dd_q = (f"A non-trivial {m.prob_dd_over_50pct*100:.1f}% of simulations breach a 50% "
+                "drawdown — survivable but uncomfortable.")
+    else:
+        dd_q = (f"Only {m.prob_dd_over_50pct*100:.1f}% of simulations breach a 50% drawdown — "
+                "tail risk looks contained.")
+    pieces.append(dd_q)
 
-    eq_tuple = tuple(bt.equity_curve.to_numpy().tolist())
-
-    with st.spinner(f"Running {sb.n_simulations:,} Monte Carlo simulations..."):
-        portfolio = _cached_dual_sleeve(
-            backtest_id=f"{series_hash}_{a_ctrl}_{b_ctrl}_{ppy}_{horizon}",
-            sleeve_a_eq_values=eq_tuple,
-            sleeve_a_alloc_pct=a_ctrl.capital_alloc_pct,
-            sleeve_b_alloc_pct=b_ctrl.capital_alloc_pct,
-            sleeve_b_expected_return_pct=b_ctrl.expected_return_pct,
-            sleeve_b_expected_vol_pct=b_ctrl.expected_vol_pct,
-            sleeve_b_expected_max_dd_pct=b_ctrl.expected_max_dd_pct,
-            sleeve_b_win_rate_pct=b_ctrl.win_rate_pct,
-            sleeve_b_avg_leverage=b_ctrl.avg_leverage,
-            sleeve_b_funding_cost_pct=b_ctrl.funding_cost_pct,
-            sleeve_b_stop_loss_pct=b_ctrl.stop_loss_pct,
-            correlation=b_ctrl.correlation,
-            n_simulations=sb.n_simulations,
-            random_seed=sb.random_seed,
-            horizon_periods=horizon,
-            periods_per_year=ppy,
-            student_t_df=cfg.SLEEVE_B_DEFAULTS.student_t_df,
-            risk_free_rate_pct=sb.risk_free_rate_pct,
-            mar_pct=sb.mar_pct,
-            confidence_low_pct=sb.confidence_low,
-            confidence_high_pct=sb.confidence_high,
+    # 4. Diversification benefit
+    combined_better_than_avg = (
+        m.sortino > 0.5 * (a.sortino + b.sortino) + 0.05
+    )
+    if combined_better_than_avg:
+        pieces.append(
+            "Combining the two sleeves produces a <strong>better risk-adjusted result</strong> "
+            "than the simple average of the parts — diversification is doing real work here."
+        )
+    else:
+        pieces.append(
+            "Combining the two sleeves does <strong>not</strong> improve risk-adjusted returns "
+            "beyond their average — either correlation is too high or one sleeve is dominating."
         )
 
-    with right:
-        st.subheader("Sleeve A — historical equity")
-        st.plotly_chart(charts.demon_equity_chart(bt, close), use_container_width=True)
-        cols = st.columns(4)
-        cols[0].metric("CAGR", f"{bt.cagr*100:.2f}%")
-        cols[1].metric("Vol (ann.)", f"{bt.annualised_vol*100:.2f}%")
-        cols[2].metric("Max DD", f"{bt.max_drawdown*100:.2f}%")
-        cols[3].metric("Rebalances", f"{bt.n_rebalances}")
+    # 5. Probability of loss
+    if m.prob_loss > 0.40:
+        pieces.append(f"P(loss) = {m.prob_loss*100:.1f}% is high — re-examine inputs before allocating capital.")
+    elif m.prob_loss > 0.20:
+        pieces.append(f"P(loss) = {m.prob_loss*100:.1f}% — meaningful chance of a losing run.")
 
-    st.subheader("Combined portfolio (Monte Carlo)")
-    cc1, cc2 = st.columns(2)
-    with cc1:
-        st.plotly_chart(charts.portfolio_equity_fan(portfolio, sb.confidence_low, sb.confidence_high),
-                        use_container_width=True)
-    with cc2:
-        st.plotly_chart(charts.portfolio_drawdown_chart(portfolio), use_container_width=True)
+    return " ".join(pieces)
 
-    cc3, cc4 = st.columns(2)
-    with cc3:
-        st.plotly_chart(charts.terminal_distribution(portfolio), use_container_width=True)
-    with cc4:
-        st.plotly_chart(charts.sleeve_contribution_chart(portfolio), use_container_width=True)
 
-    st.subheader("Metrics — by sleeve")
-    df_m = pd.DataFrame([
-        _metrics_row("A (Demon)", portfolio.metrics_a),
-        _metrics_row("B (Crypto leverage)", portfolio.metrics_b),
-        _metrics_row("Combined", portfolio.metrics_combined),
-    ])
-    st.dataframe(df_m, use_container_width=True, hide_index=True)
+# ---------------------------------------------------------------------------
+def _section_dual_sleeve(
+    close: pd.Series, results: dict, sb: controls.SidebarSettings,
+    interval_seconds: float,
+) -> tuple[BacktestResult, PortfolioResult, controls.SleeveAControls, controls.SleeveBControls]:
+    with st.container(border=True):
+        _section_open(
+            "section-5", "05 / SECTION",
+            "Dual-Sleeve Portfolio Backtest",
+            "Sleeve A is the demon engine on your asset; Sleeve B is a parametric crypto-leverage book. "
+            "Tune both, run Monte Carlo, and study the combined behaviour.",
+        )
 
-    return bt, portfolio, a_ctrl, b_ctrl
+        hl = results["half_life"]
+        if np.isfinite(hl.half_life_periods) and hl.half_life_periods > 0:
+            default_period = max(1, int(round(0.75 * hl.half_life_periods)))
+        else:
+            default_period = cfg.SLEEVE_A_DEFAULTS.time_rebalance_periods
+
+        left, right = st.columns([1, 1])
+        with left:
+            a_ctrl = controls.render_sleeve_a(default_period)
+            st.divider()
+            b_ctrl = controls.render_sleeve_b(a_ctrl.capital_alloc_pct)
+
+        series_hash = _hash_series(close)
+        bt = _cached_demon_backtest(
+            series_hash=series_hash,
+            close_values=tuple(close.to_numpy().tolist()),
+            close_index=tuple(close.index),
+            weight=a_ctrl.weight, rebalance_rule=a_ctrl.rebalance_rule,
+            time_period=a_ctrl.time_period,
+            threshold_pct=a_ctrl.threshold_pct,
+            band_sigma=a_ctrl.band_sigma,
+            band_window=a_ctrl.band_window,
+            cash_yield_pct=a_ctrl.cash_yield_pct,
+            transaction_cost_bps=a_ctrl.transaction_cost_bps,
+            interval_seconds=interval_seconds,
+            annualisation=sb.annualisation,
+        )
+
+        if sb.annualisation == "calendar":
+            ppy = (365.25 * 24 * 3600) / max(interval_seconds, 1.0)
+        else:
+            ppy = (cfg.DEFAULT_TRADING_HOURS_PER_YEAR * 3600) / max(interval_seconds, 1.0)
+        horizon = max(50, len(close))
+
+        eq_tuple = tuple(bt.equity_curve.to_numpy().tolist())
+
+        with st.spinner(f"Running {sb.n_simulations:,} Monte Carlo simulations..."):
+            portfolio = _cached_dual_sleeve(
+                backtest_id=f"{series_hash}_{a_ctrl}_{b_ctrl}_{ppy}_{horizon}",
+                sleeve_a_eq_values=eq_tuple,
+                sleeve_a_alloc_pct=a_ctrl.capital_alloc_pct,
+                sleeve_b_alloc_pct=b_ctrl.capital_alloc_pct,
+                sleeve_b_expected_return_pct=b_ctrl.expected_return_pct,
+                sleeve_b_expected_vol_pct=b_ctrl.expected_vol_pct,
+                sleeve_b_expected_max_dd_pct=b_ctrl.expected_max_dd_pct,
+                sleeve_b_win_rate_pct=b_ctrl.win_rate_pct,
+                sleeve_b_avg_leverage=b_ctrl.avg_leverage,
+                sleeve_b_funding_cost_pct=b_ctrl.funding_cost_pct,
+                sleeve_b_stop_loss_pct=b_ctrl.stop_loss_pct,
+                correlation=b_ctrl.correlation,
+                n_simulations=sb.n_simulations,
+                random_seed=sb.random_seed,
+                horizon_periods=horizon, periods_per_year=ppy,
+                student_t_df=cfg.SLEEVE_B_DEFAULTS.student_t_df,
+                risk_free_rate_pct=sb.risk_free_rate_pct,
+                mar_pct=sb.mar_pct,
+                confidence_low_pct=sb.confidence_low,
+                confidence_high_pct=sb.confidence_high,
+            )
+
+        with right:
+            _subhead("Sleeve A historical equity",
+                     desc="Demon equity curve generated by replaying your CSV through the rebalancer.")
+            st.plotly_chart(charts.demon_equity_chart(bt, close), use_container_width=True)
+            cols = st.columns(4)
+            cols[0].metric("CAGR", f"{bt.cagr*100:.2f}%",
+                           help="Compound annual growth rate of Sleeve A on the historical series.")
+            cols[1].metric("Vol (ann.)", f"{bt.annualised_vol*100:.2f}%",
+                           help="Annualised stdev of Sleeve A returns.")
+            cols[2].metric("Max DD", f"{bt.max_drawdown*100:.2f}%",
+                           help="Largest peak-to-trough loss over history.")
+            cols[3].metric("Rebalances", f"{bt.n_rebalances}",
+                           help="Number of rebalance events in the period.")
+
+        st.markdown('<div class="subhead">Combined portfolio (Monte Carlo)</div>',
+                    unsafe_allow_html=True)
+        st.markdown(
+            '<div class="subhead-desc">Sleeve A bootstrapped, Sleeve B parametric, '
+            'coupled by your correlation slider.</div>',
+            unsafe_allow_html=True,
+        )
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            st.plotly_chart(charts.portfolio_equity_fan(portfolio,
+                                                       sb.confidence_low,
+                                                       sb.confidence_high),
+                            use_container_width=True)
+        with cc2:
+            st.plotly_chart(charts.portfolio_drawdown_chart(portfolio),
+                            use_container_width=True)
+
+        cc3, cc4 = st.columns(2)
+        with cc3:
+            st.plotly_chart(charts.terminal_distribution(portfolio),
+                            use_container_width=True)
+        with cc4:
+            st.plotly_chart(charts.sleeve_contribution_chart(portfolio),
+                            use_container_width=True)
+
+        # Metrics table — with hover tooltips per column
+        _subhead("Metrics — by sleeve",
+                 desc="Hover any column header for a definition. Read the interpretation below the table.")
+        df_m = pd.DataFrame([
+            _metrics_row("A (Demon)", portfolio.metrics_a),
+            _metrics_row("B (Crypto leverage)", portfolio.metrics_b),
+            _metrics_row("Combined", portfolio.metrics_combined),
+        ])
+        column_config = {
+            col: st.column_config.Column(help=helptxt)
+            for col, helptxt in _METRIC_HELP.items()
+        }
+        st.dataframe(df_m, use_container_width=True, hide_index=True,
+                     column_config=column_config)
+
+        # Inline glossary expander — for users who can't see the column header tooltip
+        with st.expander("What does each metric mean?"):
+            for col, helptxt in _METRIC_HELP.items():
+                if col == "Sleeve":
+                    continue
+                st.markdown(f"**{col}** — {helptxt}")
+
+        # Generated interpretation
+        interp = _interpret_metrics(portfolio)
+        st.markdown(f'<div class="interp-box">{interp}</div>', unsafe_allow_html=True)
+
+        return bt, portfolio, a_ctrl, b_ctrl
 
 
 # ---------------------------------------------------------------------------
@@ -428,197 +925,221 @@ def _section_alloc_optimiser(close: pd.Series, sb: controls.SidebarSettings,
                              a_ctrl: controls.SleeveAControls,
                              b_ctrl: controls.SleeveBControls,
                              interval_seconds: float) -> None:
-    st.header("6. Allocation Optimiser")
-    st.caption(
-        "Sweeps Sleeve A allocation 0–100% in 5% steps with a small Monte Carlo at each "
-        "allocation. Runs on demand because each step is a fresh simulation."
-    )
-
-    if not st.button("Find optimal allocation", type="primary"):
-        return
-
-    series_hash = _hash_series(close)
-    bt = _cached_demon_backtest(
-        series_hash=series_hash,
-        close_values=tuple(close.to_numpy().tolist()),
-        close_index=tuple(close.index),
-        weight=a_ctrl.weight,
-        rebalance_rule=a_ctrl.rebalance_rule,
-        time_period=a_ctrl.time_period,
-        threshold_pct=a_ctrl.threshold_pct,
-        band_sigma=a_ctrl.band_sigma,
-        band_window=a_ctrl.band_window,
-        cash_yield_pct=a_ctrl.cash_yield_pct,
-        transaction_cost_bps=a_ctrl.transaction_cost_bps,
-        interval_seconds=interval_seconds,
-        annualisation=sb.annualisation,
-    )
-    eq_tuple = tuple(bt.equity_curve.to_numpy().tolist())
-
-    if sb.annualisation == "calendar":
-        ppy = (365.25 * 24 * 3600) / max(interval_seconds, 1.0)
-    else:
-        ppy = (cfg.DEFAULT_TRADING_HOURS_PER_YEAR * 3600) / max(interval_seconds, 1.0)
-    horizon = max(50, len(close))
-
-    alloc_pcts = list(np.arange(0.0, 100.0 + cfg.ALLOC_SWEEP_STEP_PCT, cfg.ALLOC_SWEEP_STEP_PCT))
-    cagrs, max_dds, sortinos = [], [], []
-    n_mc_sweep = max(100, sb.n_simulations // 4)
-    progress = st.progress(0.0, text="Sweeping allocations...")
-    for i, a in enumerate(alloc_pcts):
-        result = _cached_dual_sleeve(
-            backtest_id=f"sweep_{series_hash}_{a}_{a_ctrl}_{b_ctrl}",
-            sleeve_a_eq_values=eq_tuple,
-            sleeve_a_alloc_pct=a,
-            sleeve_b_alloc_pct=100.0 - a,
-            sleeve_b_expected_return_pct=b_ctrl.expected_return_pct,
-            sleeve_b_expected_vol_pct=b_ctrl.expected_vol_pct,
-            sleeve_b_expected_max_dd_pct=b_ctrl.expected_max_dd_pct,
-            sleeve_b_win_rate_pct=b_ctrl.win_rate_pct,
-            sleeve_b_avg_leverage=b_ctrl.avg_leverage,
-            sleeve_b_funding_cost_pct=b_ctrl.funding_cost_pct,
-            sleeve_b_stop_loss_pct=b_ctrl.stop_loss_pct,
-            correlation=b_ctrl.correlation,
-            n_simulations=n_mc_sweep,
-            random_seed=sb.random_seed,
-            horizon_periods=horizon,
-            periods_per_year=ppy,
-            student_t_df=cfg.SLEEVE_B_DEFAULTS.student_t_df,
-            risk_free_rate_pct=sb.risk_free_rate_pct,
-            mar_pct=sb.mar_pct,
-            confidence_low_pct=sb.confidence_low,
-            confidence_high_pct=sb.confidence_high,
+    with st.container(border=True):
+        _section_open(
+            "section-6", "06 / SECTION",
+            "Allocation Optimiser",
+            "Sweeps Sleeve A allocation 0-100% in 5% steps, runs a slimmer Monte Carlo at each step, "
+            "and finds the mix with the highest Sortino. Click the button to run.",
         )
-        cagrs.append(result.metrics_combined.cagr)
-        max_dds.append(result.metrics_combined.max_drawdown)
-        sortinos.append(result.metrics_combined.sortino)
-        progress.progress((i + 1) / len(alloc_pcts), text=f"Sweep {i+1}/{len(alloc_pcts)}")
-    progress.empty()
+        if not st.button("Find optimal allocation", type="primary", key="opt_run"):
+            return
 
-    optimal_idx = int(np.argmax(sortinos))
-    optimal_alloc = alloc_pcts[optimal_idx]
+        series_hash = _hash_series(close)
+        bt = _cached_demon_backtest(
+            series_hash=series_hash,
+            close_values=tuple(close.to_numpy().tolist()),
+            close_index=tuple(close.index),
+            weight=a_ctrl.weight, rebalance_rule=a_ctrl.rebalance_rule,
+            time_period=a_ctrl.time_period,
+            threshold_pct=a_ctrl.threshold_pct,
+            band_sigma=a_ctrl.band_sigma,
+            band_window=a_ctrl.band_window,
+            cash_yield_pct=a_ctrl.cash_yield_pct,
+            transaction_cost_bps=a_ctrl.transaction_cost_bps,
+            interval_seconds=interval_seconds,
+            annualisation=sb.annualisation,
+        )
+        eq_tuple = tuple(bt.equity_curve.to_numpy().tolist())
 
-    st.plotly_chart(
-        charts.allocation_optimiser_chart(
-            alloc_pcts, cagrs, max_dds, sortinos,
-            current_alloc=a_ctrl.capital_alloc_pct,
-            optimal_alloc=optimal_alloc,
-        ),
-        use_container_width=True,
-    )
-    st.success(
-        f"Optimal Sleeve A allocation by Sortino: **{optimal_alloc:.0f}%** "
-        f"(Sortino = {sortinos[optimal_idx]:.2f}, CAGR = {cagrs[optimal_idx]*100:.2f}%, "
-        f"Max DD = {max_dds[optimal_idx]*100:.2f}%)"
-    )
+        if sb.annualisation == "calendar":
+            ppy = (365.25 * 24 * 3600) / max(interval_seconds, 1.0)
+        else:
+            ppy = (cfg.DEFAULT_TRADING_HOURS_PER_YEAR * 3600) / max(interval_seconds, 1.0)
+        horizon = max(50, len(close))
+
+        alloc_pcts = list(np.arange(0.0, 100.0 + cfg.ALLOC_SWEEP_STEP_PCT,
+                                    cfg.ALLOC_SWEEP_STEP_PCT))
+        cagrs, max_dds, sortinos = [], [], []
+        n_mc_sweep = max(100, sb.n_simulations // 4)
+        progress = st.progress(0.0, text="Sweeping allocations...")
+        for i, a in enumerate(alloc_pcts):
+            result = _cached_dual_sleeve(
+                backtest_id=f"sweep_{series_hash}_{a}_{a_ctrl}_{b_ctrl}",
+                sleeve_a_eq_values=eq_tuple,
+                sleeve_a_alloc_pct=a, sleeve_b_alloc_pct=100.0 - a,
+                sleeve_b_expected_return_pct=b_ctrl.expected_return_pct,
+                sleeve_b_expected_vol_pct=b_ctrl.expected_vol_pct,
+                sleeve_b_expected_max_dd_pct=b_ctrl.expected_max_dd_pct,
+                sleeve_b_win_rate_pct=b_ctrl.win_rate_pct,
+                sleeve_b_avg_leverage=b_ctrl.avg_leverage,
+                sleeve_b_funding_cost_pct=b_ctrl.funding_cost_pct,
+                sleeve_b_stop_loss_pct=b_ctrl.stop_loss_pct,
+                correlation=b_ctrl.correlation,
+                n_simulations=n_mc_sweep,
+                random_seed=sb.random_seed,
+                horizon_periods=horizon, periods_per_year=ppy,
+                student_t_df=cfg.SLEEVE_B_DEFAULTS.student_t_df,
+                risk_free_rate_pct=sb.risk_free_rate_pct,
+                mar_pct=sb.mar_pct,
+                confidence_low_pct=sb.confidence_low,
+                confidence_high_pct=sb.confidence_high,
+            )
+            cagrs.append(result.metrics_combined.cagr)
+            max_dds.append(result.metrics_combined.max_drawdown)
+            sortinos.append(result.metrics_combined.sortino)
+            progress.progress((i + 1) / len(alloc_pcts),
+                              text=f"Sweep {i+1}/{len(alloc_pcts)}")
+        progress.empty()
+
+        optimal_idx = int(np.argmax(sortinos))
+        optimal_alloc = alloc_pcts[optimal_idx]
+
+        st.plotly_chart(
+            charts.allocation_optimiser_chart(
+                alloc_pcts, cagrs, max_dds, sortinos,
+                current_alloc=a_ctrl.capital_alloc_pct,
+                optimal_alloc=optimal_alloc,
+            ),
+            use_container_width=True,
+        )
+        st.success(
+            f"Optimal Sleeve A allocation by Sortino: **{optimal_alloc:.0f}%** "
+            f"(Sortino = {sortinos[optimal_idx]:.2f}, "
+            f"CAGR = {cagrs[optimal_idx]*100:.2f}%, "
+            f"Max DD = {max_dds[optimal_idx]*100:.2f}%)"
+        )
 
 
 # ---------------------------------------------------------------------------
 def _section_leverage(portfolio: PortfolioResult, sb: controls.SidebarSettings) -> None:
-    st.header("7. Leverage Sensitivity")
-    st.caption(
-        "Applies leverage to the combined-portfolio per-period returns: "
-        "`r_levered = L · (r_portfolio − borrow_per_period)`. Borrow cost defaults to risk-free."
-    )
+    with st.container(border=True):
+        _section_open(
+            "section-7", "07 / SECTION",
+            "Leverage Sensitivity",
+            "Applies leverage to the combined portfolio's per-period returns minus borrow cost. "
+            "Shows where added gearing turns a clean strategy into a margin-call factory.",
+        )
 
-    lev = st.slider("Leverage applied to combined portfolio (×)",
-                    cfg.LEVERAGE_MIN, cfg.LEVERAGE_MAX,
-                    1.0, cfg.LEVERAGE_STEP, key="lev_main")
+        lev = st.slider("Leverage applied to combined portfolio (x)",
+                        cfg.LEVERAGE_MIN, cfg.LEVERAGE_MAX,
+                        1.0, cfg.LEVERAGE_STEP, key="lev_main")
 
-    levs = list(np.arange(cfg.LEVERAGE_MIN, cfg.LEVERAGE_MAX + cfg.LEVERAGE_STEP, cfg.LEVERAGE_STEP))
+        levs = list(np.arange(cfg.LEVERAGE_MIN,
+                              cfg.LEVERAGE_MAX + cfg.LEVERAGE_STEP,
+                              cfg.LEVERAGE_STEP))
 
-    paths = portfolio.combined_paths
-    rets = np.diff(paths, axis=1) / paths[:, :-1]
-    borrow_per_period = sb.risk_free_rate_pct / 100.0 / portfolio.periods_per_year
+        paths = portfolio.combined_paths
+        rets = np.diff(paths, axis=1) / paths[:, :-1]
+        borrow_per_period = sb.risk_free_rate_pct / 100.0 / portfolio.periods_per_year
 
-    def _lever(L: float):
-        levered = L * (rets - borrow_per_period)
-        levered_paths = np.concatenate([np.ones((paths.shape[0], 1)),
-                                        np.cumprod(1.0 + levered, axis=1)], axis=1)
-        cagr = (levered_paths[:, -1] / levered_paths[:, 0]) ** (
-            1.0 / max(paths.shape[1] / portfolio.periods_per_year, 1e-9)
-        ) - 1.0
-        peaks = np.maximum.accumulate(levered_paths, axis=1)
-        dd = ((levered_paths - peaks) / peaks).min(axis=1)
-        excess = levered - sb.mar_pct / 100.0 / portfolio.periods_per_year
-        sort = np.zeros(levered.shape[0])
-        for i in range(levered.shape[0]):
-            d = excess[i][excess[i] < 0]
-            if len(d) > 1 and d.std(ddof=1) > 0:
-                sort[i] = excess[i].mean() / d.std(ddof=1) * np.sqrt(portfolio.periods_per_year)
-        return float(cagr.mean()), float(dd.mean()), float(sort.mean())
+        def _lever(L: float):
+            levered = L * (rets - borrow_per_period)
+            levered_paths = np.concatenate([np.ones((paths.shape[0], 1)),
+                                            np.cumprod(1.0 + levered, axis=1)], axis=1)
+            cagr = (levered_paths[:, -1] / levered_paths[:, 0]) ** (
+                1.0 / max(paths.shape[1] / portfolio.periods_per_year, 1e-9)
+            ) - 1.0
+            peaks = np.maximum.accumulate(levered_paths, axis=1)
+            dd = ((levered_paths - peaks) / peaks).min(axis=1)
+            excess = levered - sb.mar_pct / 100.0 / portfolio.periods_per_year
+            sort = np.zeros(levered.shape[0])
+            for i in range(levered.shape[0]):
+                d = excess[i][excess[i] < 0]
+                if len(d) > 1 and d.std(ddof=1) > 0:
+                    sort[i] = excess[i].mean() / d.std(ddof=1) * np.sqrt(portfolio.periods_per_year)
+            return float(cagr.mean()), float(dd.mean()), float(sort.mean())
 
-    sweep_cagr, sweep_dd, sweep_sort = [], [], []
-    for L in levs:
-        c, d, s = _lever(L)
-        sweep_cagr.append(c)
-        sweep_dd.append(d)
-        sweep_sort.append(s)
+        sweep_cagr, sweep_dd, sweep_sort = [], [], []
+        for L in levs:
+            c, d, s = _lever(L)
+            sweep_cagr.append(c)
+            sweep_dd.append(d)
+            sweep_sort.append(s)
 
-    st.plotly_chart(
-        charts.leverage_sensitivity_chart(levs, sweep_cagr, sweep_dd, sweep_sort),
-        use_container_width=True,
-    )
+        st.plotly_chart(
+            charts.leverage_sensitivity_chart(levs, sweep_cagr, sweep_dd, sweep_sort),
+            use_container_width=True,
+        )
 
-    cur_cagr, cur_dd, cur_sort = _lever(lev)
-    cols = st.columns(3)
-    cols[0].metric(f"CAGR @ {lev}×", f"{cur_cagr*100:.2f}%")
-    cols[1].metric(f"Max DD @ {lev}×", f"{cur_dd*100:.2f}%")
-    cols[2].metric(f"Sortino @ {lev}×", f"{cur_sort:.2f}")
-    if cur_dd < -cfg.LEVERAGE_MARGIN_CALL_DD:
-        st.error(f"⚠️ Drawdown at {lev}× exceeds 50% — margin-call territory.")
-    elif cur_dd < -cfg.LEVERAGE_DD_RED_THRESHOLD:
-        st.warning(f"⚠️ Drawdown at {lev}× exceeds 30%.")
+        cur_cagr, cur_dd, cur_sort = _lever(lev)
+        cols = st.columns(3)
+        cols[0].metric(f"CAGR @ {lev}x", f"{cur_cagr*100:.2f}%",
+                       help="Mean compound growth at this leverage level.")
+        cols[1].metric(f"Max DD @ {lev}x", f"{cur_dd*100:.2f}%",
+                       help="Mean max drawdown at this leverage level.")
+        cols[2].metric(f"Sortino @ {lev}x", f"{cur_sort:.2f}",
+                       help="Risk-adjusted return at this leverage level.")
+        if cur_dd < -cfg.LEVERAGE_MARGIN_CALL_DD:
+            st.error(f"Drawdown at {lev}x exceeds 50% — margin-call territory.")
+        elif cur_dd < -cfg.LEVERAGE_DD_RED_THRESHOLD:
+            st.warning(f"Drawdown at {lev}x exceeds 30%.")
 
 
 # ---------------------------------------------------------------------------
 def _section_conclusion(verdict: SuitabilityVerdict, portfolio: PortfolioResult) -> None:
-    st.header("8. Conclusion")
-    _verdict_box(verdict)
-
-    cols = st.columns(2)
-    with cols[0]:
-        st.subheader("Top 3 reasons")
-        for r in verdict.top_reasons:
-            st.markdown(f"- {r}")
-        st.subheader("Suggested rebalance frequency")
-        st.markdown(f"> {verdict.suggested_rebalance}")
-    with cols[1]:
-        st.subheader("Risk envelope")
-        st.markdown(f"- Max recommended leverage: **{verdict.max_recommended_leverage}×**")
-        st.markdown(
-            f"- Combined Sortino achieved: **{portfolio.metrics_combined.sortino:.2f}** "
-            "(rule of thumb: ≥ 2.0 to support meaningful leverage)"
+    with st.container(border=True):
+        _section_open(
+            "section-8", "08 / SECTION",
+            "Conclusion",
+            "Aggregated suitability score (0-100), top reasons, suggested rebalance cadence, "
+            "max recommended leverage, and any red flags.",
         )
-        st.subheader("Red flags")
-        if not verdict.red_flags:
-            st.markdown("None detected.")
-        else:
-            for f in verdict.red_flags:
-                st.markdown(f"- 🚩 {f}")
+        _verdict_box(verdict)
 
-    with st.expander("Component score breakdown"):
-        st.write(verdict.component_scores)
+        cols = st.columns(2)
+        with cols[0]:
+            st.markdown('<div class="subhead">Top 3 reasons</div>', unsafe_allow_html=True)
+            for r in verdict.top_reasons:
+                st.markdown(f"- {r}")
+            st.markdown('<div class="subhead">Suggested rebalance frequency</div>',
+                        unsafe_allow_html=True)
+            st.markdown(f"> {verdict.suggested_rebalance}")
+        with cols[1]:
+            st.markdown('<div class="subhead">Risk envelope</div>', unsafe_allow_html=True)
+            st.markdown(f"- Max recommended leverage: **{verdict.max_recommended_leverage}x**")
+            st.markdown(
+                f"- Combined Sortino achieved: **{portfolio.metrics_combined.sortino:.2f}** "
+                "(rule of thumb: >= 2.0 to support meaningful leverage)"
+            )
+            st.markdown('<div class="subhead">Red flags</div>', unsafe_allow_html=True)
+            if not verdict.red_flags:
+                st.markdown("None detected.")
+            else:
+                for f in verdict.red_flags:
+                    st.markdown(f"- {f}")
+
+        with st.expander("Component score breakdown"):
+            st.write(verdict.component_scores)
 
 
 # ---------------------------------------------------------------------------
 # Tab assembly
 # ---------------------------------------------------------------------------
 def render_analysis_tab() -> None:
-    st.title("👹 Shannon's Demon — Suitability Dashboard")
+    st.title("Shannon's Demon — Suitability Dashboard")
     st.caption(
-        "Upload an OHLCV CSV, run statistical mean-reversion tests, and stress-test a "
-        "dual-sleeve portfolio (Demon + Crypto leverage) under Monte Carlo."
+        "Upload an OHLCV CSV, restrict to a date range if desired, run statistical "
+        "mean-reversion tests, and stress-test a dual-sleeve portfolio (Demon + Crypto leverage) "
+        "under Monte Carlo."
     )
 
-    sidebar = controls.render_sidebar()
+    sidebar = controls.render_settings_expander()
+
     upload_result = upload.render_uploader()
     if upload_result is None:
-        st.info("👆 Upload a CSV to begin. Required column: `close`.")
+        st.info("Upload a CSV to begin. Required column: `close`.")
         return
 
     df = upload_result.df
     close = df["close"]
+
+    # Date range filter (top of page, before any analysis)
+    with st.container(border=True):
+        filtered = _render_date_filter(close, upload_result.has_time_index)
+    if filtered is None or len(filtered) < cfg.MIN_OBS_HARD_BLOCK:
+        return
+    close = filtered
 
     _section_price_overview(close)
 
@@ -652,8 +1173,11 @@ def render_analysis_tab() -> None:
 
 def main() -> None:
     """Top-level Streamlit entry point."""
+    st.markdown(_CUSTOM_CSS, unsafe_allow_html=True)
+    controls.render_sidebar_toc()
+
     tab_analysis, tab_docs, tab_assumptions = st.tabs(
-        ["📊 Analysis", "📘 Documentation", "⚠️ Assumptions & Limitations"]
+        ["Analysis", "Documentation", "Assumptions & Limitations"]
     )
     with tab_analysis:
         render_analysis_tab()

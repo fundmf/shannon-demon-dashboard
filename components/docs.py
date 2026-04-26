@@ -143,7 +143,7 @@ _DOC_PART_4 = """\
 
 def render_documentation_tab() -> None:
     """Render the educational reference material."""
-    st.title("📘 Documentation")
+    st.title("Documentation")
     st.caption(
         "Reference material on Shannon's Demon, leverage, and the Sortino ratio. "
         "Read this before drawing conclusions from the analysis tab."
@@ -399,7 +399,7 @@ def _render_assumption_block(title: str, items: list[tuple[str, str]]) -> None:
 
 def render_assumptions_tab() -> None:
     """Render the assumptions & limitations reference."""
-    st.title("⚠️ Assumptions & Limitations")
+    st.title("Assumptions & Limitations")
     st.caption(
         "Every model is wrong; some are useful. This page lists every assumption baked "
         "into the dashboard, in formal terms with a plain-English translation. Read this "

@@ -135,6 +135,37 @@ MC_DEFAULTS: Final[MonteCarloDefaults] = MonteCarloDefaults()
 
 
 # ---------------------------------------------------------------------------
+# Theme — quant / institutional dark palette
+# ---------------------------------------------------------------------------
+THEME_BG: Final[str] = "#0B0E11"             # page
+THEME_CARD: Final[str] = "#11151B"           # surface
+THEME_CARD_ALT: Final[str] = "#161B22"
+THEME_BORDER: Final[str] = "#21262D"
+THEME_GRID: Final[str] = "#1B2028"
+THEME_TEXT: Final[str] = "#E6EDF3"
+THEME_TEXT_MUTED: Final[str] = "#8B949E"
+THEME_ACCENT: Final[str] = "#C8A24A"          # muted gold
+THEME_SUCCESS: Final[str] = "#3FB950"
+THEME_WARNING: Final[str] = "#D29922"
+THEME_DANGER: Final[str] = "#DA3633"
+THEME_INFO: Final[str] = "#58A6FF"
+THEME_PURPLE: Final[str] = "#A371F7"
+THEME_TEAL: Final[str] = "#39B3B8"
+
+# Plotly layout defaults to apply to every figure
+PLOTLY_DEFAULTS: Final[dict] = {
+    "paper_bgcolor": THEME_CARD,
+    "plot_bgcolor": THEME_BG,
+    "font": {"color": THEME_TEXT, "family": "Inter, -apple-system, Segoe UI, sans-serif", "size": 12},
+    "colorway": [THEME_ACCENT, THEME_INFO, THEME_TEAL, THEME_PURPLE, THEME_SUCCESS, THEME_WARNING, THEME_DANGER],
+    "xaxis": {"gridcolor": THEME_GRID, "zerolinecolor": THEME_BORDER, "linecolor": THEME_BORDER},
+    "yaxis": {"gridcolor": THEME_GRID, "zerolinecolor": THEME_BORDER, "linecolor": THEME_BORDER},
+    "legend": {"bgcolor": "rgba(0,0,0,0)", "font": {"color": THEME_TEXT}},
+    "hoverlabel": {"bgcolor": THEME_CARD_ALT, "font": {"color": THEME_TEXT}, "bordercolor": THEME_BORDER},
+}
+
+
+# ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
 LOG_FORMAT: Final[str] = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"

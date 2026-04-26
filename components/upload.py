@@ -237,7 +237,7 @@ def render_uploader() -> Optional[UploadResult]:
     cols[3].metric("Warnings", f"{len(result.warnings)}")
 
     if result.warnings:
-        with st.expander(f"⚠️ {len(result.warnings)} warning(s)"):
+        with st.expander(f"{len(result.warnings)} warning(s)"):
             for w in result.warnings:
                 st.warning(w)
 
