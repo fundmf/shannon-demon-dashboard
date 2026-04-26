@@ -1,0 +1,30 @@
+# Example Cloudflare Tunnel config for the Shannon's Demon dashboard.
+#
+# Copy this file to ~/.cloudflared/config.yml and replace:
+#   <your-tunnel-id>           with the ID printed by `cloudflared tunnel create`
+#   <path-to-credentials.json> with the absolute path of the JSON written by Cloudflare
+#   demon.yourdomain.com       with the hostname you want to expose
+#
+# After editing, run:
+#   cloudflared tunnel route dns shannon-demon demon.yourdomain.com
+#   cloudflared tunnel run shannon-demon
+
+tunnel: <your-tunnel-id>
+credentials-file: <path-to-credentials.json>
+
+# Optional: set the log level for cloudflared itself
+loglevel: info
+
+ingress:
+  # Public hostname → local Streamlit
+  - hostname: demon.yourdomain.com
+    service: http://localhost:8501
+    originRequest:
+      # Streamlit uses websockets for live updates — make sure they're permitted
+      noTLSVerify: false
+      connectTimeout: 30s
+      keepAliveTimeout: 90s
+      keepAliveConnections: 100
+
+  # Catch-all: anything that doesn't match the above returns 404
+  - service: http_status:404

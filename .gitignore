@@ -1,0 +1,49 @@
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Byte-compiled / optimised
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Cloudflare credentials and tunnel state
+cloudflared/credentials.json
+cloudflared/*.json
+*.pem
+cert.pem
+
+# Secrets / env
+.env
+.env.*
+*.secret
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Cached data uploaded by users
+sample_data/
+uploads/

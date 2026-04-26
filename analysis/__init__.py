@@ -1,0 +1,61 @@
+"""Analysis package: stationarity, mean-reversion, backtests, portfolio sim."""
+
+from analysis.stats_tests import (
+    ADFResult,
+    KPSSResult,
+    HurstResult,
+    HalfLifeResult,
+    RegimeResult,
+    VolatilityResult,
+    HarvestResult,
+    run_adf,
+    run_kpss,
+    run_hurst,
+    run_half_life,
+    run_regime_detection,
+    run_volatility,
+    shannon_harvest,
+)
+from analysis.backtest import BacktestResult, run_demon_backtest
+from analysis.portfolio import PortfolioResult, run_dual_sleeve_simulation
+from analysis.interpretations import (
+    SuitabilityVerdict,
+    interpret_adf,
+    interpret_kpss,
+    interpret_hurst,
+    interpret_half_life,
+    interpret_regime,
+    interpret_volatility,
+    combined_stationarity_verdict,
+    overall_suitability,
+)
+
+__all__ = [
+    "ADFResult",
+    "KPSSResult",
+    "HurstResult",
+    "HalfLifeResult",
+    "RegimeResult",
+    "VolatilityResult",
+    "HarvestResult",
+    "BacktestResult",
+    "PortfolioResult",
+    "SuitabilityVerdict",
+    "run_adf",
+    "run_kpss",
+    "run_hurst",
+    "run_half_life",
+    "run_regime_detection",
+    "run_volatility",
+    "shannon_harvest",
+    "run_demon_backtest",
+    "run_dual_sleeve_simulation",
+    "interpret_adf",
+    "interpret_kpss",
+    "interpret_hurst",
+    "interpret_half_life",
+    "interpret_regime",
+    "interpret_volatility",
+    "combined_stationarity_verdict",
+    "overall_suitability",
+]
