@@ -332,6 +332,43 @@ footer {{ visibility: hidden; }}
 ::-webkit-scrollbar-track {{ background: var(--bg); }}
 ::-webkit-scrollbar-thumb {{ background: var(--border); border-radius: 4px; }}
 ::-webkit-scrollbar-thumb:hover {{ background: var(--muted); }}
+
+/* ===========================================================
+   Keyword highlighting system
+   Hover any highlighted word for the category meaning.
+   =========================================================== */
+.kw-test     {{ color: #D4A858; font-weight: 600; }}
+.kw-num      {{ color: #5DD3D8; font-family: 'JetBrains Mono','Consolas',monospace; font-weight: 500; }}
+.kw-good     {{ color: #56D364; font-weight: 600; }}
+.kw-warn     {{ color: #E0A45C; font-weight: 600; }}
+.kw-bad      {{ color: #FF6B6B; font-weight: 600; }}
+.kw-concept  {{ color: #79B8FF; font-weight: 600; }}
+.kw-caveat   {{ color: #B392F0; font-weight: 600; }}
+
+/* legend — top of every tab */
+.kw-legend {{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px 22px;
+  padding: 10px 16px;
+  background: var(--card-alt);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  font-size: 0.82em;
+  margin: 4px 0 22px 0;
+  color: var(--muted);
+  align-items: center;
+}}
+.kw-legend-label {{
+  font-family: 'JetBrains Mono','Consolas',monospace;
+  font-size: 0.78em;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-right: 4px;
+}}
+.kw-legend span span {{ font-weight: 600; }}
 </style>
 """
 
@@ -418,6 +455,23 @@ def _cached_dual_sleeve(
 
 
 # ---------------------------------------------------------------------------
+# Keyword-highlight legend (rendered once at the top of each tab)
+# ---------------------------------------------------------------------------
+KW_LEGEND_HTML = (
+    '<div class="kw-legend">'
+    '<span class="kw-legend-label">LEGEND</span>'
+    '<span><span class="kw-test">tests / methods</span></span>'
+    '<span><span class="kw-num">numbers / thresholds</span></span>'
+    '<span><span class="kw-good">positive signal</span></span>'
+    '<span><span class="kw-warn">caution</span></span>'
+    '<span><span class="kw-bad">risk</span></span>'
+    '<span><span class="kw-concept">core concept</span></span>'
+    '<span><span class="kw-caveat">assumption / caveat</span></span>'
+    '</div>'
+)
+
+
+# ---------------------------------------------------------------------------
 # Section / status helpers
 # ---------------------------------------------------------------------------
 def _pill(status: str) -> str:
@@ -470,8 +524,9 @@ def _render_date_filter(close: pd.Series, has_time_index: bool) -> Optional[pd.S
     st.markdown(
         '<div class="section-num">FILTER</div>'
         '<div class="section-title">Analysis date range</div>'
-        '<div class="section-desc">Restrict every test, backtest, and Monte Carlo below to a date window. '
-        'Defaults to the full uploaded range.</div>',
+        '<div class="section-desc">Restrict every <span class="kw-test">test</span>, '
+        '<span class="kw-concept">backtest</span>, and <span class="kw-test">Monte Carlo</span> '
+        'below to a date window. Defaults to the <span class="kw-good">full uploaded range</span>.</div>',
         unsafe_allow_html=True,
     )
 
@@ -530,9 +585,11 @@ def _section_price_overview(close: pd.Series) -> None:
         _section_open(
             "section-1", "01 / SECTION",
             "Price Overview",
-            "Visual snapshot of the uploaded series — close price with a rolling mean and "
-            "+/-1 sigma / +/-2 sigma bands. Use this to eyeball whether the asset behaves "
-            "in a way that rebalancing could exploit.",
+            'Visual snapshot of the uploaded series — close price with a '
+            '<span class="kw-concept">rolling mean</span> and '
+            '<span class="kw-num">+/-1 sigma</span> / <span class="kw-num">+/-2 sigma</span> bands. '
+            'Use this to eyeball whether the asset behaves in a way that '
+            '<span class="kw-concept">rebalancing</span> could exploit.',
         )
         st.plotly_chart(charts.price_overview(close), use_container_width=True)
 
@@ -555,15 +612,18 @@ def _section_stationarity(results: dict) -> None:
         _section_open(
             "section-2", "02 / SECTION",
             "Stationarity & Mean Reversion",
-            "Tests whether the series tends to return to its average. ADF and KPSS check this from "
-            "different angles; Hurst measures persistence; half-life estimates how fast the series snaps back.",
+            'Tests whether the series tends to <span class="kw-good">return to its average</span>. '
+            '<span class="kw-test">ADF</span> and <span class="kw-test">KPSS</span> check this from different angles; '
+            '<span class="kw-test">Hurst</span> measures persistence; '
+            '<span class="kw-test">half-life</span> estimates how fast the series snaps back.',
         )
         adf, kpss_r, hurst, hl = results["adf"], results["kpss"], results["hurst"], results["half_life"]
 
         c1, c2 = st.columns(2)
         with c1:
             _subhead("ADF Test", adf.status,
-                     "Tests if the series is stationary. Low p-value = mean-reverting.")
+                     'Tests if the series is <span class="kw-good">stationary</span>. '
+                     'Low <span class="kw-num">p-value</span> = <span class="kw-good">mean-reverting</span>.')
             if adf.status != "error":
                 st.metric("Statistic (c)", f"{adf.statistic_c:.4f}",
                           help="Augmented Dickey-Fuller test statistic. More negative = stronger mean reversion.")
@@ -580,7 +640,8 @@ def _section_stationarity(results: dict) -> None:
 
         with c2:
             _subhead("KPSS Test", kpss_r.status,
-                     "Tests the opposite null. High p-value = stationary around a level.")
+                     'Tests the opposite null. High <span class="kw-num">p-value</span> = '
+                     '<span class="kw-good">stationary around a level</span>.')
             if kpss_r.status != "error":
                 st.metric("Statistic", f"{kpss_r.statistic:.4f}",
                           help="KPSS statistic. Low values support stationarity.")
@@ -594,7 +655,10 @@ def _section_stationarity(results: dict) -> None:
         c3, c4 = st.columns(2)
         with c3:
             _subhead("Hurst Exponent", hurst.status,
-                     "Memory of the series. <0.5 reverts; ~0.5 random walk; >0.5 trends.")
+                     'Memory of the series. <span class="kw-num">&lt;0.5</span> '
+                     '<span class="kw-good">reverts</span>; <span class="kw-num">~0.5</span> '
+                     '<span class="kw-warn">random walk</span>; <span class="kw-num">&gt;0.5</span> '
+                     '<span class="kw-bad">trends</span>.')
             if hurst.status != "error":
                 st.metric("Best estimate", f"{hurst.best_estimate:.3f}",
                           help="Mean of the two methods, or the more reliable one if they disagree.")
@@ -608,7 +672,8 @@ def _section_stationarity(results: dict) -> None:
 
         with c4:
             _subhead("Half-Life of Mean Reversion", hl.status,
-                     "How long it takes the series to snap halfway back to its mean.")
+                     'How long it takes the series to <span class="kw-good">snap halfway back</span> to its '
+                     '<span class="kw-concept">mean</span>.')
             if hl.status != "error":
                 st.metric("Beta (AR1)", f"{hl.beta:.5f}",
                           help="AR(1) coefficient. Negative = mean-reverting; closer to -1 = faster.")
@@ -629,15 +694,16 @@ def _section_regime_vol(close: pd.Series, results: dict) -> None:
         _section_open(
             "section-3", "03 / SECTION",
             "Regime Stability & Volatility",
-            "Detects regime shifts (sudden changes in level) and measures the asset's annualised "
-            "volatility — the raw material the demon harvests.",
+            'Detects <span class="kw-warn">regime shifts</span> (sudden changes in level) and measures '
+            'the asset\'s <span class="kw-concept">annualised volatility</span> — the '
+            '<span class="kw-good">raw material the demon harvests</span>.',
         )
         regime, vol = results["regime"], results["vol"]
 
         c1, c2 = st.columns(2)
         with c1:
             _subhead("Regime Stability", regime.status,
-                     "Counts moments where the series clearly shifts level.")
+                     'Counts moments where the series <span class="kw-warn">clearly shifts level</span>.')
             if regime.status != "error":
                 st.metric("Regime shifts detected", f"{regime.n_shifts}",
                           help="Times the rolling mean moved > 2 sigma vs the prior window.")
@@ -647,7 +713,8 @@ def _section_regime_vol(close: pd.Series, results: dict) -> None:
 
         with c2:
             _subhead("Annualised Volatility", vol.status,
-                     "Annualised stdev of log returns. The bigger this is, the more rebalancing fuel.")
+                     'Annualised <span class="kw-test">stdev of log returns</span>. The bigger this is, '
+                     'the more <span class="kw-good">rebalancing fuel</span>.')
             if vol.status != "error":
                 st.metric("Full-sample (ann.)", f"{vol.full_sample_annualised*100:.2f}%",
                           help="Annualised stdev across the whole window.")
@@ -663,8 +730,10 @@ def _section_harvest(vol_result, default_w: float) -> None:
         _section_open(
             "section-4", "04 / SECTION",
             "Shannon Harvest Estimator",
-            "Theoretical upper bound on the annualised rebalancing bonus, given the measured volatility "
-            "and your weight in the risky asset. Continuous-time GBM approximation.",
+            'Theoretical <span class="kw-good">upper bound</span> on the annualised '
+            '<span class="kw-concept">rebalancing bonus</span>, given the measured '
+            '<span class="kw-concept">volatility</span> and your weight in the risky asset. '
+            '<span class="kw-caveat">Continuous-time GBM approximation</span>.',
         )
         st.latex(r"\text{Bonus} \approx \tfrac{1}{2} \cdot w \cdot (1-w) \cdot \sigma^2")
         sigma = vol_result.full_sample_annualised if np.isfinite(vol_result.full_sample_annualised) else 0.0
@@ -726,33 +795,45 @@ def _interpret_metrics(portfolio: PortfolioResult) -> str:
 
     # 1. Headline return / risk
     pieces.append(
-        f"The combined portfolio compounds at <strong>{m.cagr*100:.2f}%/yr</strong> "
-        f"with an annualised volatility of <strong>{m.annualised_vol*100:.2f}%</strong>."
+        f'The combined portfolio compounds at <span class="kw-num">{m.cagr*100:.2f}%/yr</span> '
+        f'with an annualised volatility of <span class="kw-num">{m.annualised_vol*100:.2f}%</span>.'
     )
 
     # 2. Sortino quality
     if m.sortino >= 2.0:
-        sortino_q = "very strong (>= 2.0) — solid enough to support meaningful leverage"
+        sortino_q = ('<span class="kw-good">very strong</span> '
+                     '(<span class="kw-num">&gt;= 2.0</span>) — solid enough to support '
+                     'meaningful <span class="kw-concept">leverage</span>')
     elif m.sortino >= 1.0:
-        sortino_q = "decent (1.0-2.0) — usable but be cautious adding leverage"
+        sortino_q = ('<span class="kw-warn">decent</span> '
+                     '(<span class="kw-num">1.0-2.0</span>) — usable but be cautious adding '
+                     '<span class="kw-concept">leverage</span>')
     elif m.sortino >= 0:
-        sortino_q = "weak (<1.0) — leverage will amplify drawdowns faster than returns"
+        sortino_q = ('<span class="kw-bad">weak</span> '
+                     '(<span class="kw-num">&lt;1.0</span>) — leverage will amplify '
+                     '<span class="kw-bad">drawdowns</span> faster than returns')
     else:
-        sortino_q = "negative — the strategy loses money on a risk-adjusted basis"
+        sortino_q = ('<span class="kw-bad">negative</span> — the strategy loses money on a '
+                     'risk-adjusted basis')
     pieces.append(
-        f"The Sortino of <strong>{m.sortino:.2f}</strong> is {sortino_q}."
+        f'The <span class="kw-test">Sortino</span> of '
+        f'<span class="kw-num">{m.sortino:.2f}</span> is {sortino_q}.'
     )
 
     # 3. Drawdown read-through
     if m.prob_dd_over_50pct > 0.10:
-        dd_q = (f"More than 10% of simulations breach a 50% drawdown "
-                f"(P(DD>50%) = {m.prob_dd_over_50pct*100:.1f}%) — this is fragile.")
+        dd_q = (f'More than <span class="kw-num">10%</span> of simulations breach a '
+                f'<span class="kw-num">50%</span> drawdown '
+                f'(<span class="kw-num">P(DD&gt;50%) = {m.prob_dd_over_50pct*100:.1f}%</span>) — '
+                f'this is <span class="kw-bad">fragile</span>.')
     elif m.prob_dd_over_50pct > 0.02:
-        dd_q = (f"A non-trivial {m.prob_dd_over_50pct*100:.1f}% of simulations breach a 50% "
-                "drawdown — survivable but uncomfortable.")
+        dd_q = (f'A non-trivial <span class="kw-num">{m.prob_dd_over_50pct*100:.1f}%</span> of '
+                f'simulations breach a <span class="kw-num">50%</span> drawdown — '
+                f'<span class="kw-warn">survivable but uncomfortable</span>.')
     else:
-        dd_q = (f"Only {m.prob_dd_over_50pct*100:.1f}% of simulations breach a 50% drawdown — "
-                "tail risk looks contained.")
+        dd_q = (f'Only <span class="kw-num">{m.prob_dd_over_50pct*100:.1f}%</span> of simulations '
+                f'breach a <span class="kw-num">50%</span> drawdown — '
+                f'<span class="kw-good">tail risk looks contained</span>.')
     pieces.append(dd_q)
 
     # 4. Diversification benefit
@@ -761,20 +842,28 @@ def _interpret_metrics(portfolio: PortfolioResult) -> str:
     )
     if combined_better_than_avg:
         pieces.append(
-            "Combining the two sleeves produces a <strong>better risk-adjusted result</strong> "
-            "than the simple average of the parts — diversification is doing real work here."
+            'Combining the two sleeves produces a <span class="kw-good">better risk-adjusted result</span> '
+            'than the simple average of the parts — <span class="kw-concept">diversification</span> '
+            'is doing real work here.'
         )
     else:
         pieces.append(
-            "Combining the two sleeves does <strong>not</strong> improve risk-adjusted returns "
-            "beyond their average — either correlation is too high or one sleeve is dominating."
+            'Combining the two sleeves does <span class="kw-bad">not</span> improve risk-adjusted '
+            'returns beyond their average — either <span class="kw-warn">correlation is too high</span> '
+            'or one sleeve is dominating.'
         )
 
     # 5. Probability of loss
     if m.prob_loss > 0.40:
-        pieces.append(f"P(loss) = {m.prob_loss*100:.1f}% is high — re-examine inputs before allocating capital.")
+        pieces.append(
+            f'<span class="kw-test">P(loss)</span> = <span class="kw-num">{m.prob_loss*100:.1f}%</span> '
+            'is <span class="kw-bad">high</span> — re-examine inputs before allocating capital.'
+        )
     elif m.prob_loss > 0.20:
-        pieces.append(f"P(loss) = {m.prob_loss*100:.1f}% — meaningful chance of a losing run.")
+        pieces.append(
+            f'<span class="kw-test">P(loss)</span> = <span class="kw-num">{m.prob_loss*100:.1f}%</span> — '
+            '<span class="kw-warn">meaningful chance of a losing run</span>.'
+        )
 
     return " ".join(pieces)
 
@@ -788,8 +877,10 @@ def _section_dual_sleeve(
         _section_open(
             "section-5", "05 / SECTION",
             "Dual-Sleeve Portfolio Backtest",
-            "Sleeve A is the demon engine on your asset; Sleeve B is a parametric crypto-leverage book. "
-            "Tune both, run Monte Carlo, and study the combined behaviour.",
+            '<span class="kw-concept">Sleeve A</span> is the <span class="kw-concept">demon engine</span> '
+            'on your asset; <span class="kw-concept">Sleeve B</span> is a parametric '
+            '<span class="kw-concept">crypto-leverage</span> book. Tune both, run '
+            '<span class="kw-test">Monte Carlo</span>, and study the combined behaviour.',
         )
 
         hl = results["half_life"]
@@ -929,8 +1020,10 @@ def _section_alloc_optimiser(close: pd.Series, sb: controls.SidebarSettings,
         _section_open(
             "section-6", "06 / SECTION",
             "Allocation Optimiser",
-            "Sweeps Sleeve A allocation 0-100% in 5% steps, runs a slimmer Monte Carlo at each step, "
-            "and finds the mix with the highest Sortino. Click the button to run.",
+            'Sweeps <span class="kw-concept">Sleeve A</span> allocation '
+            '<span class="kw-num">0-100%</span> in <span class="kw-num">5%</span> steps, runs a slimmer '
+            '<span class="kw-test">Monte Carlo</span> at each step, and finds the mix with the '
+            '<span class="kw-good">highest Sortino</span>. Click the button to run.',
         )
         if not st.button("Find optimal allocation", type="primary", key="opt_run"):
             return
@@ -1017,8 +1110,9 @@ def _section_leverage(portfolio: PortfolioResult, sb: controls.SidebarSettings) 
         _section_open(
             "section-7", "07 / SECTION",
             "Leverage Sensitivity",
-            "Applies leverage to the combined portfolio's per-period returns minus borrow cost. "
-            "Shows where added gearing turns a clean strategy into a margin-call factory.",
+            'Applies <span class="kw-concept">leverage</span> to the combined portfolio\'s per-period '
+            'returns minus <span class="kw-warn">borrow cost</span>. Shows where added gearing turns a '
+            'clean strategy into a <span class="kw-bad">margin-call factory</span>.',
         )
 
         lev = st.slider("Leverage applied to combined portfolio (x)",
@@ -1082,8 +1176,10 @@ def _section_conclusion(verdict: SuitabilityVerdict, portfolio: PortfolioResult)
         _section_open(
             "section-8", "08 / SECTION",
             "Conclusion",
-            "Aggregated suitability score (0-100), top reasons, suggested rebalance cadence, "
-            "max recommended leverage, and any red flags.",
+            'Aggregated <span class="kw-good">suitability score</span> '
+            '(<span class="kw-num">0-100</span>), top reasons, suggested '
+            '<span class="kw-concept">rebalance cadence</span>, max recommended '
+            '<span class="kw-concept">leverage</span>, and any <span class="kw-bad">red flags</span>.',
         )
         _verdict_box(verdict)
 
@@ -1123,6 +1219,7 @@ def render_analysis_tab() -> None:
         "mean-reversion tests, and stress-test a dual-sleeve portfolio (Demon + Crypto leverage) "
         "under Monte Carlo."
     )
+    st.markdown(KW_LEGEND_HTML, unsafe_allow_html=True)
 
     sidebar = controls.render_settings_expander()
 
