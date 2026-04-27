@@ -9,8 +9,58 @@ prose, not a Christmas tree.
 from __future__ import annotations
 
 import os
+import re
 
 import streamlit as st
+
+
+# ---------------------------------------------------------------------------
+# Search helper — highlight matches without breaking inline HTML
+# ---------------------------------------------------------------------------
+_HTML_TAG_RE = re.compile(r"(<[^>]+>)")
+
+
+def _apply_search(text: str, query: str) -> tuple[str, int]:
+    """Wrap any case-insensitive matches of `query` in <mark class="search-hit">.
+
+    Crucially, only matches that fall outside HTML tags are highlighted —
+    so a search for 'span' does not bleed into the inline keyword spans
+    used by the highlight system.
+
+    Returns the (possibly modified) text and the number of matches.
+    """
+    if not query or not query.strip():
+        return text, 0
+    q = query.strip()
+    pattern = re.compile(re.escape(q), re.IGNORECASE)
+    parts = _HTML_TAG_RE.split(text)
+    n_matches = 0
+
+    def _sub(m: re.Match) -> str:
+        nonlocal n_matches
+        n_matches += 1
+        return f'<mark class="search-hit">{m.group()}</mark>'
+
+    out = []
+    for p in parts:
+        if p.startswith("<") and p.endswith(">"):
+            out.append(p)            # leave HTML tags untouched
+        else:
+            out.append(pattern.sub(_sub, p))
+    return "".join(out), n_matches
+
+
+def _section_contains(content_blocks: list[str], query: str) -> int:
+    """Count case-insensitive matches in a list of plain-text blocks."""
+    if not query or not query.strip():
+        return 0
+    pattern = re.compile(re.escape(query.strip()), re.IGNORECASE)
+    n = 0
+    for block in content_blocks:
+        # strip HTML for counting purposes so attribute names don't count
+        plain = _HTML_TAG_RE.sub("", block)
+        n += len(pattern.findall(plain))
+    return n
 
 
 # ---------------------------------------------------------------------------
@@ -34,7 +84,7 @@ KW_LEGEND_HTML = (
 # Documentation parts
 # ---------------------------------------------------------------------------
 _DOC_PART_1 = """\
-## Section 1: Shannon's Demon — The Rebalancing Paradox
+## Shannon's Demon — The Rebalancing Paradox
 
 <span class="kw-concept">Shannon's Demon</span> is one of those beautiful ideas that feels like it shouldn't work but does. Claude Shannon (the information theory guy) described it in lectures at MIT in the 1960s as a thought experiment about how <span class="kw-concept">rebalancing</span> can <span class="kw-good">extract profit from pure volatility</span> — even when the underlying asset goes nowhere.
 
@@ -111,7 +161,7 @@ For a practical build: equal-weight basket of <span class="kw-num">5–8</span> 
 
 
 _DOC_PART_2_INTRO = """\
-## Section 2: Leveraging for Relatively Lower Risk (Capital Market Line)
+## Leveraging for Relatively Lower Risk (Capital Market Line)
 """
 
 _DOC_PART_2_BODY = """\
@@ -131,7 +181,7 @@ The diagram is a classic **<span class="kw-concept">Capital Market Line</span>**
 
 
 _DOC_PART_3 = """\
-## Section 3: Tying It Together — Why the Demon + Leverage Stack Works
+## Tying It Together — Why the Demon + Leverage Stack Works
 
 You build a <span class="kw-concept">Shannon's Demon engine</span> on a <span class="kw-good">mean-reverting asset</span> — a stable, grinding, volatility-harvesting machine. Call this your **<span class="kw-concept">base portfolio</span>**. It has <span class="kw-good">low drawdowns</span> (cash buffer), positive expected return from rebalancing, and a smooth equity curve (<span class="kw-good">high Sortino ratio</span>).
 
@@ -147,7 +197,7 @@ Then, because your base is so stable, you can safely **apply <span class="kw-con
 
 
 _DOC_PART_4 = """\
-## Section 4: The Sortino Connection
+## The Sortino Connection
 
 **<span class="kw-test">Sortino ratio</span>** = return divided by *downside* volatility only. It ignores upside wiggles (who cares if you're up?) and focuses on how much your portfolio hurts on the way down. A <span class="kw-good">high Sortino ratio</span> means your strategy rarely has big drops.
 
@@ -164,8 +214,19 @@ _DOC_PART_4 = """\
 
 
 # ---------------------------------------------------------------------------
+def _section_header(num: str, title_short: str) -> None:
+    """Render the section number tag with a right-aligned short title."""
+    st.markdown(
+        f'<div class="doc-section-tag">'
+        f'<span>SECTION {num}</span>'
+        f'<span class="doc-section-tag-right">{title_short}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+
 def render_documentation_tab() -> None:
-    """Render the educational reference material."""
+    """Render the educational reference material with search + cards."""
     st.title("Documentation")
     st.caption(
         "Reference material on Shannon's Demon, leverage, and the Sortino ratio. "
@@ -173,21 +234,77 @@ def render_documentation_tab() -> None:
     )
     st.markdown(KW_LEGEND_HTML, unsafe_allow_html=True)
 
-    st.markdown(_DOC_PART_1, unsafe_allow_html=True)
+    # ---- search bar -----------------------------------------------------
+    search = st.text_input(
+        "Search the documentation",
+        key="docs_search",
+        placeholder="e.g. 'half-life', 'Sortino', 'leverage', 'survivorship'",
+        label_visibility="collapsed",
+    )
 
-    st.markdown(_DOC_PART_2_INTRO, unsafe_allow_html=True)
-    img_path = os.path.join("assets", "efficient_frontier.png")
-    if os.path.exists(img_path):
-        st.image(img_path, caption="Capital Market Line", use_container_width=True)
-    else:
-        st.info(
-            "Drop your efficient frontier diagram at `assets/efficient_frontier.png` "
-            "to display it here."
-        )
-    st.markdown(_DOC_PART_2_BODY, unsafe_allow_html=True)
+    # Pre-count matches per section so we can show a summary
+    sections = [
+        ("01", "Rebalancing paradox", [_DOC_PART_1]),
+        ("02", "Capital Market Line", [_DOC_PART_2_INTRO, _DOC_PART_2_BODY]),
+        ("03", "Demon + Leverage stack", [_DOC_PART_3]),
+        ("04", "Sortino connection", [_DOC_PART_4]),
+    ]
+    if search and search.strip():
+        per_section = [(num, title, _section_contains(blocks, search))
+                       for num, title, blocks in sections]
+        total = sum(n for _, _, n in per_section)
+        if total == 0:
+            st.markdown(
+                f'<div class="doc-search-info">No matches for '
+                f'<strong>"{search}"</strong>.</div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            breakdown = " · ".join(
+                f"S{num} <strong>{n}</strong>" for num, _, n in per_section if n > 0
+            )
+            st.markdown(
+                f'<div class="doc-search-info"><strong>{total}</strong> matches '
+                f'for <strong>"{search}"</strong> &nbsp;·&nbsp; {breakdown}</div>',
+                unsafe_allow_html=True,
+            )
 
-    st.markdown(_DOC_PART_3, unsafe_allow_html=True)
-    st.markdown(_DOC_PART_4, unsafe_allow_html=True)
+    # ---- Section 01 -----------------------------------------------------
+    with st.container(border=True):
+        _section_header("01", "Rebalancing paradox")
+        body, _ = _apply_search(_DOC_PART_1, search)
+        st.markdown(body, unsafe_allow_html=True)
+
+    # ---- Section 02 (with image) ---------------------------------------
+    with st.container(border=True):
+        _section_header("02", "Capital Market Line")
+        intro, _ = _apply_search(_DOC_PART_2_INTRO, search)
+        st.markdown(intro, unsafe_allow_html=True)
+
+        img_path = os.path.join("assets", "efficient_frontier.png")
+        if os.path.exists(img_path):
+            st.image(img_path, caption="Capital Market Line",
+                     use_container_width=True)
+        else:
+            st.info(
+                "Drop your efficient frontier diagram at "
+                "`assets/efficient_frontier.png` to display it here."
+            )
+
+        body2, _ = _apply_search(_DOC_PART_2_BODY, search)
+        st.markdown(body2, unsafe_allow_html=True)
+
+    # ---- Section 03 -----------------------------------------------------
+    with st.container(border=True):
+        _section_header("03", "Demon + Leverage stack")
+        body, _ = _apply_search(_DOC_PART_3, search)
+        st.markdown(body, unsafe_allow_html=True)
+
+    # ---- Section 04 -----------------------------------------------------
+    with st.container(border=True):
+        _section_header("04", "Sortino connection")
+        body, _ = _apply_search(_DOC_PART_4, search)
+        st.markdown(body, unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------

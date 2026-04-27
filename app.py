@@ -369,6 +369,49 @@ footer {{ visibility: hidden; }}
   margin-right: 4px;
 }}
 .kw-legend span span {{ font-weight: 600; }}
+
+/* Documentation section card header tag */
+.doc-section-tag {{
+  color: var(--accent);
+  font-family: 'JetBrains Mono','Consolas',monospace;
+  font-size: 0.78em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 4px 0 12px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}}
+.doc-section-tag .doc-section-tag-right {{
+  color: var(--muted);
+  font-weight: 500;
+  letter-spacing: 0.10em;
+}}
+
+/* Documentation search bar */
+.doc-search-info {{
+  color: var(--muted);
+  font-size: 0.85em;
+  margin: 4px 0 14px 0;
+  font-family: 'JetBrains Mono','Consolas',monospace;
+  letter-spacing: 0.04em;
+}}
+.doc-search-info strong {{
+  color: var(--accent);
+}}
+
+/* Search match highlight */
+mark.search-hit {{
+  background: rgba(232, 192, 96, 0.32);
+  color: #FFEFC2;
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-weight: 600;
+  box-shadow: inset 0 -1px 0 rgba(232,192,96,0.6);
+}}
 </style>
 """
 
